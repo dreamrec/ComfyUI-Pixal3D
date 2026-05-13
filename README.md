@@ -265,9 +265,15 @@ These control the *post-sampling* mesh post-processing inside `o_voxel.postproce
 #### Side effects (not exposed via output sockets)
 
 - A timestamped GLB is **always** written to
-  `ComfyUI/output/pixal3d_<unix_ts>_<seed>.glb` regardless of what's downstream
-  of `mesh`. Textures are PNG (not WebP) so Blender / Three.js / Babylon open
-  them directly.
+  `ComfyUI/output/pixal3d_<unix_ns_ts>_<seed>.glb` regardless of what's
+  downstream of `mesh`. Textures are PNG (not WebP) so Blender / Three.js /
+  Babylon open them directly.
+- The plugin **unconditionally sets `os.environ["HF_ENDPOINT"] = "https://huggingface.co"`**
+  at module load. This is a process-wide change that affects every other
+  HuggingFace-aware node in the same ComfyUI worker. Necessary because
+  ComfyUI Desktop has been observed to inherit `HF_ENDPOINT=https://hf-mirror.com`
+  from somewhere upstream, blocking BiRefNet / RMBG-2.0 downloads. See the
+  comment in `nodes/pixal3d_stages.py` for full context.
 
 ---
 

@@ -22,8 +22,10 @@ try:
         NODE_CLASS_MAPPINGS,
         NODE_DISPLAY_NAME_MAPPINGS,
     )
-except Exception as e:
-    log.warning(f"[ComfyUI-Pixal3D] node import failed: {e}")
+except Exception:
+    # Full traceback at error level — silent failures here used to look like
+    # "nodes mysteriously disappeared from the menu." Surface the real cause.
+    log.exception("[ComfyUI-Pixal3D] node import failed; nodes will not register.")
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
 

@@ -44,10 +44,22 @@ os.environ.setdefault(
     str(_CUSTOM_NODE_ROOT / "pixal3d_autotune_cache.json"),
 )
 
-# Override any HF mirror that may leak in from the comfy_env worker env.
-# Observed in the wild: HF_ENDPOINT inherited as https://hf-mirror.com from
-# ComfyUI Desktop's launch env, which blocks BiRefNet/RMBG-2.0 download.
-# We always want huggingface.co for this codepath.
+# PROCESS-LEVEL SIDE EFFECT — read this if you care:
+#
+# We unconditionally set `os.environ["HF_ENDPOINT"]` for the entire
+# ComfyUI worker process. This affects every HuggingFace download made
+# by any node in the same process, not just Pixal3D.
+#
+# Why: ComfyUI Desktop has been observed to inherit HF_ENDPOINT=https://
+# hf-mirror.com from some upstream launch env, which blocks the BiRefNet /
+# RMBG-2.0 download. Patching `huggingface_hub.constants.ENDPOINT` after
+# import was tried and didn't stick reliably (transformers and other libs
+# cache the URL at their own import time). The env var override is the
+# only fix that survives across all the lazy-import paths.
+#
+# If you have a workflow that legitimately wants a different HF endpoint
+# (corporate mirror, etc.), set `HF_ENDPOINT` *after* the Pixal3D pipeline
+# has loaded, or exclude this plugin from that workflow's environment.
 os.environ["HF_ENDPOINT"] = "https://huggingface.co"
 
 # ---------------------------------------------------------------------------
@@ -98,27 +110,29 @@ PIPELINE_TYPES = ("1024_cascade", "1536_cascade")
 
 
 def _rescue_inference_tensors(module) -> None:
-    """Detach + clone every parameter and buffer of an nn.Module so they
-    become regular (non-inference) tensors.
+    """Defensively clone any inference-tensor parameters/buffers of `module`
+    out of inference state.
 
-    ComfyUI's `execution.py:734` wraps every node FUNCTION call in
-    `torch.inference_mode()`. Inside that ambient context, **any** new
-    tensor is an inference tensor — including `.detach().clone()` results.
-    To produce regular tensors we have to **explicitly disable**
-    inference_mode for the duration of the clone, via
-    `torch.inference_mode(mode=False)`. Without this guard the rescue is
-    silently a no-op when called from a ComfyUI node.
+    With the `torch.inference_mode(mode=False)` wrap at the top of
+    `run_pixal3d`, this is almost always a no-op — models loaded inside the
+    disabled-inference-mode context already come back as regular tensors.
+    The helper is kept as a safety net for code paths that still load
+    weights under the ambient ComfyUI `inference_mode()` (e.g. if upstream
+    Pixal3D ever adds another `from_pretrained` call we haven't escaped).
 
-    Safe to call repeatedly (idempotent).
+    Cost on the no-op path: one `is_inference()` check per parameter ≈ μs.
+    The earlier state_dict roundtrip was dropped — it caused a ~5 GB
+    temporary VRAM spike on 4× DINOv3 ViT-L and was redundant with the
+    per-param clone fallback.
     """
     with torch.inference_mode(mode=False), torch.no_grad():
-        sd = {k: v.detach().clone() for k, v in module.state_dict().items()}
-        module.load_state_dict(sd, strict=True)
         for _p in module.parameters():
-            _p.data = _p.data.detach().clone()
-            _p.requires_grad_(False)
+            if _p.is_inference():
+                _p.data = _p.data.detach().clone()
+                _p.requires_grad_(False)
         for _b in module.buffers():
-            _b.data = _b.data.detach().clone()
+            if _b.is_inference():
+                _b.data = _b.data.detach().clone()
 
 
 def _build_image_cond_model(config: dict):
@@ -201,8 +215,11 @@ def load_pipeline(low_vram: bool = False, model_path: str = PIXAL3D_MODEL_PATH):
 
     pipeline.low_vram = low_vram
 
+    # Use ComfyUI's selected device throughout (NOT bare `.cuda()`, which
+    # silently defaults to cuda:0 and breaks multi-GPU setups where ComfyUI
+    # has been told to use cuda:1).
     device = mm.get_torch_device()
-    pipeline.cuda() if device.type == "cuda" else pipeline.to(device)
+    pipeline.to(device)
     for attr in (
         "image_cond_model_ss",
         "image_cond_model_shape_512",
@@ -210,11 +227,7 @@ def load_pipeline(low_vram: bool = False, model_path: str = PIXAL3D_MODEL_PATH):
         "image_cond_model_tex_1024",
     ):
         m = getattr(pipeline, attr, None)
-        if m is None:
-            continue
-        if device.type == "cuda":
-            m.cuda()
-        else:
+        if m is not None:
             m.to(device)
 
     log.info("[Pixal3D] Pre-loading NAF upsamplers...")
@@ -342,12 +355,26 @@ def _comfy_image_to_pil(image: torch.Tensor, mask: Optional[torch.Tensor]) -> Im
         return pil
 
     mn = mask.detach().cpu().numpy()
+    target_h, target_w = pil.height, pil.width
+    # ComfyUI MASK tensors are conventionally [H, W] or [B, H, W]. We also
+    # tolerate [B, H, W, C] in case the caller fed an IMAGE in by mistake.
+    # The earlier "shape[-1] in (1..4) → channel-last" heuristic could
+    # misclassify a tall narrow mask; we now check explicitly.
     if mn.ndim == 4:
-        mn = mn[0]
-    if mn.ndim == 3:
-        mn = mn[..., 0] if mn.shape[-1] in (1, 2, 3, 4) else mn[0]
+        # [B, H, W, C] — take first batch, first channel
+        mn = mn[0, ..., 0]
+    elif mn.ndim == 3:
+        # Could be [B, H, W] or [H, W, C]. Disambiguate by the image we have:
+        # if the *first two* dims match the target image, it's [B, H, W];
+        # if the *last two* dims match, it's [H, W, C].
+        if mn.shape[1:3] == (target_h, target_w):
+            mn = mn[0]                                   # [B, H, W] -> [H, W]
+        elif mn.shape[0:2] == (target_h, target_w):
+            mn = mn[..., 0]                              # [H, W, C] -> [H, W]
+        else:
+            mn = mn[0]                                   # fall back to [B, H, W]
     if mn.ndim != 2:
-        log.warning(f"[Pixal3D] Mask shape {mn.shape} not 2D; ignoring")
+        log.warning(f"[Pixal3D] Mask shape {mn.shape} not reducible to 2D; ignoring")
         return pil
 
     if mn.shape != (pil.height, pil.width):
@@ -564,7 +591,10 @@ def _run_pixal3d_body(*, image, mask, low_vram, seed, pipeline_type,
         import folder_paths, time as _t
         out_dir = pathlib.Path(folder_paths.get_output_directory())
         out_dir.mkdir(parents=True, exist_ok=True)
-        glb_path = out_dir / f"pixal3d_{int(_t.time())}_{seed}.glb"
+        # time_ns() rather than time() so two runs in the same second with
+        # the same seed don't collide (e.g. quick re-queue, or the same
+        # workflow with `seed=fixed` clicked twice).
+        glb_path = out_dir / f"pixal3d_{_t.time_ns()}_{seed}.glb"
         # extension_webp=True (the upstream inference.py default) embeds WebP
         # textures which Blender/STB cannot decode. Stick to PNG for max compat.
         glb.export(str(glb_path))

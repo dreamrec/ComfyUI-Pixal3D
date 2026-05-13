@@ -31,7 +31,10 @@ from typing import List, Optional
 
 HERE = pathlib.Path(__file__).resolve().parent
 PIXAL3D_REPO = "https://github.com/TencentARC/Pixal3D.git"
-PIXAL3D_BRANCH = "master"
+# Pinned to the exact commit verified working with this plugin. Update only
+# after re-testing against a newer upstream — Tencent has force-pushed
+# `master` in the past, so a moving target breaks reproducibility.
+PIXAL3D_REF = "d42dcaad99ba07d35a02fa62a23e1cd6f2f61da1"
 
 
 def log(msg: str) -> None:
@@ -96,7 +99,12 @@ def clone_pixal3d() -> None:
         return
     if shutil.which("git") is None:
         raise SystemExit("git not found on PATH. Install git first.")
-    run(["git", "clone", "--depth", "1", "--branch", PIXAL3D_BRANCH, PIXAL3D_REPO, str(target)])
+    # `clone --depth 1 <sha>` doesn't work on most servers — do a shallow
+    # clone of the default branch, then fetch + checkout the pinned SHA.
+    run(["git", "clone", "--filter=blob:none", "--no-checkout", PIXAL3D_REPO, str(target)])
+    run(["git", "-C", str(target), "fetch", "--depth", "1", "origin", PIXAL3D_REF])
+    run(["git", "-C", str(target), "checkout", PIXAL3D_REF])
+    log(f"Checked out Pixal3D @ {PIXAL3D_REF[:12]}")
 
 
 def pip_install(python: pathlib.Path, args: List[str]) -> None:
@@ -122,8 +130,18 @@ def install_natten_wheel(python: pathlib.Path) -> None:
 
 
 def apply_patches() -> None:
-    import runpy
-    runpy.run_path(str(HERE / "patches" / "birefnet_inference_mode.py"), run_name="__main__")
+    """Call each patch script's `main()` directly so a non-zero return code
+    doesn't raise SystemExit through install.py's flow."""
+    import importlib.util
+
+    for patch_name in ("birefnet_inference_mode",):
+        path = HERE / "patches" / f"{patch_name}.py"
+        spec = importlib.util.spec_from_file_location(f"patches.{patch_name}", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        rc = mod.main()
+        if rc != 0:
+            log(f"[apply_patches] {patch_name}.main() returned {rc} — continuing.")
 
 
 def sanity_check(python: pathlib.Path) -> None:

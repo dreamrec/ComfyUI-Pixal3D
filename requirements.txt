@@ -1,11 +1,23 @@
 # Python deps that go into the comfy-env worker venv.
-# install.py wires these up into the ComfyUI-TRELLIS2 pixi env.
+# install.py wires these up into the ComfyUI-TRELLIS2 pixi env via
+# `pip install --no-deps -r requirements.txt`.
+#
+# Versions/commits/hashes are pinned for reproducibility. If you bump any of
+# these, re-run the smoke test (workflows/pixal3d_image_to_mesh.json) before
+# committing the change.
 
-# Image-to-3D conditioning + utilities
-git+https://github.com/microsoft/MoGe.git
-https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl
+# MoGe-2 camera-intrinsics estimator (Microsoft Research). Pinned to the
+# commit that matches the `Ruicheng/moge-2-vitl` weights we download.
+git+https://github.com/microsoft/MoGe.git@07444410f1e33f402353b99d6ccd26bd31e469e8#egg=moge
 
-# Mesh preview / render
+# utils3d — small math helpers consumed by Pixal3D. Distributed as a wheel
+# from a release URL (no PyPI presence). Hash-pinned for supply-chain safety.
+https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl \
+    --hash=sha256:ff63440827d6933807dd06c8a5a2db7e51fd5f33c7f3dddcc766a80e0f419252
+
+# Mesh preview / render. PyOpenGL 3.1.0 (pyrender's pin) is too old for
+# Python 3.12 — ≥3.1.7 + accelerate fixes the ctypes parameter-handler
+# regression on Windows.
 pyrender
 PyOpenGL>=3.1.7
 PyOpenGL-accelerate>=3.1.7

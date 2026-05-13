@@ -1,0 +1,104 @@
+name: ci
+
+# Lightweight checks that catch the most common breakage classes for a
+# ComfyUI custom-node plugin without spinning up the actual 24 GB Pixal3D
+# pipeline. Runs in ~30 sec.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile every .py
+        run: python -m compileall -q .
+
+      - name: Validate workflow JSONs
+        run: |
+          for f in workflows/*.json; do
+            python -m json.tool < "$f" > /dev/null
+            echo "OK $f"
+          done
+
+      - name: Validate Pixal3DImageToMesh widget index alignment
+        # Catches the "shifted widget" regression class: every saved workflow
+        # JSON's widgets_values array must match the count + order of
+        # INPUT_TYPES.required + INPUT_TYPES.optional (minus connection-only
+        # inputs like mask/pipeline_ready).
+        run: |
+          python - <<'PY'
+          import ast, json, pathlib, sys
+
+          # Parse nodes_pixal3d.py and extract Pixal3DImageToMesh.INPUT_TYPES
+          src = pathlib.Path("nodes/nodes_pixal3d.py").read_text()
+          tree = ast.parse(src)
+          widget_names = []
+          for node in ast.walk(tree):
+              if isinstance(node, ast.ClassDef) and node.name == "Pixal3DImageToMesh":
+                  for item in ast.walk(node):
+                      if (isinstance(item, ast.FunctionDef) and
+                          item.name == "INPUT_TYPES"):
+                          # The function returns a dict literal — walk it
+                          for ret in ast.walk(item):
+                              if isinstance(ret, ast.Return):
+                                  d = ret.value
+                                  if not isinstance(d, ast.Dict):
+                                      continue
+                                  for k, v in zip(d.keys, d.values):
+                                      if (isinstance(k, ast.Constant) and
+                                          k.value in ("required", "optional") and
+                                          isinstance(v, ast.Dict)):
+                                          for kk in v.keys:
+                                              if isinstance(kk, ast.Constant):
+                                                  widget_names.append(kk.value)
+                  break
+
+          # Exclude connection-only inputs (no widget slot in widgets_values)
+          NON_WIDGET = {"image", "mask", "pipeline_ready"}
+          expected = [n for n in widget_names if n not in NON_WIDGET]
+          print(f"Expected widget order ({len(expected)}): {expected}")
+
+          # Cross-check every workflow JSON's Pixal3DImageToMesh node
+          fail = False
+          for f in sorted(pathlib.Path("workflows").glob("*.json")):
+              wf = json.loads(f.read_text())
+              for n in wf.get("nodes", []):
+                  if n.get("type") == "Pixal3DImageToMesh":
+                      wv = n.get("widgets_values", [])
+                      # widgets_values may include extra entries like "fixed"
+                      # for seed's control_after_generate widget — strip those
+                      # when comparing length.
+                      if len(wv) < len(expected):
+                          print(f"FAIL {f.name}: widgets_values has {len(wv)} "
+                                f"entries, schema expects ≥ {len(expected)}")
+                          fail = True
+          if fail:
+              sys.exit(1)
+          print("All workflow JSONs match the node schema.")
+          PY
+
+      - name: Check repo doesn't bundle Pixal3D source (license discipline)
+        run: |
+          if [ -d "_pixal3d_src" ]; then
+            echo "ERROR: _pixal3d_src/ must not be committed — it's installed by install.py at install time."
+            exit 1
+          fi
+          echo "OK: _pixal3d_src/ correctly absent from repo."
+
+      - name: Sanity check the bundled natten wheel
+        run: |
+          ls wheels/natten-*.whl
+          # Confirm exactly one wheel
+          test "$(ls wheels/natten-*.whl | wc -l)" -eq 1

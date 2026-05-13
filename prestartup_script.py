@@ -11,24 +11,32 @@ Loaded BEFORE register_nodes() so the proxies pick up the patched timeout.
 try:
     import comfy_env.isolation.workers.subprocess as _cews_sp
 
-    _orig_call_method = _cews_sp.SubprocessWorker.call_method
+    # Idempotency sentinel: if our wrapper is already installed (e.g. comfy_env
+    # reload or hot-reload tooling re-runs prestartup in the same process),
+    # skip — otherwise we'd wrap the wrapper recursively and blow the stack
+    # on the first node call.
+    if getattr(_cews_sp.SubprocessWorker.call_method, "_pixal3d_patched", False):
+        print("[ComfyUI-Pixal3D-prestartup] call_method already patched — skipping.")
+    else:
+        _orig_call_method = _cews_sp.SubprocessWorker.call_method
 
-    def _pixal3d_patched_call(self, module_name, class_name, method_name,
-                              self_state=None, kwargs=None, timeout=None):
-        if class_name and class_name.startswith("Pixal3D"):
-            timeout = max(timeout or 0.0, 3600.0)
-        return _orig_call_method(
-            self,
-            module_name=module_name,
-            class_name=class_name,
-            method_name=method_name,
-            self_state=self_state,
-            kwargs=kwargs,
-            timeout=timeout,
-        )
+        def _pixal3d_patched_call(self, module_name, class_name, method_name,
+                                  self_state=None, kwargs=None, timeout=None):
+            if class_name and class_name.startswith("Pixal3D"):
+                timeout = max(timeout or 0.0, 3600.0)
+            return _orig_call_method(
+                self,
+                module_name=module_name,
+                class_name=class_name,
+                method_name=method_name,
+                self_state=self_state,
+                kwargs=kwargs,
+                timeout=timeout,
+            )
 
-    _cews_sp.SubprocessWorker.call_method = _pixal3d_patched_call
-    print("[ComfyUI-Pixal3D-prestartup] SubprocessWorker.call_method patched "
-          "(timeout 3600s for Pixal3D*)")
+        _pixal3d_patched_call._pixal3d_patched = True
+        _cews_sp.SubprocessWorker.call_method = _pixal3d_patched_call
+        print("[ComfyUI-Pixal3D-prestartup] SubprocessWorker.call_method patched "
+              "(timeout 3600s for Pixal3D*)")
 except Exception as e:
     print(f"[ComfyUI-Pixal3D-prestartup] timeout patch skipped: {e}")

@@ -34,7 +34,11 @@ ORIGINAL = """    def __call__(self, image: Image.Image) -> Image.Image:
 
 PATCHED = """    def __call__(self, image: Image.Image) -> Image.Image:
         image_size = image.size
-        input_images = self.transform_image(image).unsqueeze(0).to("cuda")
+        # Use the device the model already sits on (set by pipeline.to(device)
+        # in ComfyUI-Pixal3D's load_pipeline) instead of bare "cuda" — that
+        # would silently break multi-GPU setups.
+        _model_device = next(self.model.parameters()).device
+        input_images = self.transform_image(image).unsqueeze(0).to(_model_device)
         # The rescue from inference-tensor state happens once at pipeline
         # load (in ComfyUI-Pixal3D's pixal3d_stages.load_pipeline). We rely
         # on that; no per-call rescue here so calls stay fast.
@@ -65,4 +69,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # When invoked standalone, mirror the exit code. When called via
+    # install.py's runpy.run_path() this branch isn't taken — install.py
+    # invokes `main()` directly so SystemExit doesn't propagate.
+    raise SystemExit(main())
