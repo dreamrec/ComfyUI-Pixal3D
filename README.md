@@ -1,9 +1,19 @@
 # ComfyUI-Pixal3D
 
-[![Pixal3D](https://img.shields.io/badge/Pixal3D-SIGGRAPH%202026-blue)](https://github.com/TencentARC/Pixal3D)
-[![ComfyUI](https://img.shields.io/badge/ComfyUI-custom%20node-orange)](https://github.com/comfyanonymous/ComfyUI)
-[![License: MIT (wrapper)](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Pixal3D License](https://img.shields.io/badge/Pixal3D-academic%20%2F%20no--EU-red)](NOTICE.md)
+<p align="left">
+  <a href="https://github.com/TencentARC/Pixal3D"><img src="https://img.shields.io/badge/Pixal3D-SIGGRAPH%202026-3776AB?logo=siggraph&logoColor=white" alt="Pixal3D SIGGRAPH 2026"></a>
+  <a href="https://github.com/comfyanonymous/ComfyUI"><img src="https://img.shields.io/badge/ComfyUI-custom%20node-FF6F00?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyIDJMMiA3djEwbDEwIDUgMTAtNVY3eiIvPjwvc3ZnPg==" alt="ComfyUI"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-0078D6?logo=windows&logoColor=white" alt="Windows 10/11 x64">
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/PyTorch-2.8-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch 2.8">
+  <img src="https://img.shields.io/badge/CUDA-12.8-76B900?logo=nvidia&logoColor=white" alt="CUDA 12.8">
+  <img src="https://img.shields.io/badge/NVIDIA-RTX%2030%20%2F%2040%20%2F%2050-76B900?logo=nvidia&logoColor=white" alt="NVIDIA RTX 30/40/50">
+</p>
+
+<p align="left">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Wrapper%20License-MIT-yellow.svg" alt="Wrapper License MIT"></a>
+  <a href="NOTICE.md"><img src="https://img.shields.io/badge/Pixal3D%20License-Academic%20%2F%20No--EU-red" alt="Pixal3D License: Academic / No-EU"></a>
+</p>
 
 ComfyUI custom node for **[Pixal3D](https://github.com/TencentARC/Pixal3D)** — Tencent's SIGGRAPH 2026 single-image to PBR-textured-3D pipeline — on **Windows** with **RTX 30/40/50** GPUs. Built on top of [ComfyUI-Trellis2](https://github.com/visualbruno/ComfyUI-Trellis2).
 
