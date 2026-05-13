@@ -105,6 +105,57 @@ steps.
 
    Expected output: `0.21.0 True` and `torch.Size([1, 32, 32, 4, 256])`.
 
+## After your wheel works — install the rest
+
+Once `HAS_LIBNATTEN` is `True` and the verification snippet runs, **just run
+this plugin's `install.py` normally**:
+
+```powershell
+cd $HOME\Documents\ComfyUI\custom_nodes\ComfyUI-Pixal3D
+python install.py
+```
+
+`install.py` probes your worker python with `import natten; natten.HAS_LIBNATTEN;
+natten.na2d(...)`. If it works, the installer **skips the bundled wheel
+install** and keeps your natten. You'll see:
+
+```
+[ComfyUI-Pixal3D install] [natten probe] OK 0.21.0
+[ComfyUI-Pixal3D install] natten is already installed and working — keeping it.
+```
+
+It then proceeds to install MoGe + utils3d + pyrender, clone Pixal3D, apply
+the BiRefNet patch, and run the sanity check. **Restart ComfyUI Desktop** when
+the installer reports done.
+
+### Manual control over the natten step
+
+| Flag | When to use |
+|---|---|
+| `python install.py` (no flag) | Default. Auto-detects whether natten works and installs the bundled wheel only if it doesn't. |
+| `python install.py --skip-natten-wheel` | Force-skip the bundled wheel install regardless of probe result. Use if you manage natten yourself and want install.py to ignore it entirely. |
+| `python install.py --force-natten-wheel` | Bypass the probe and overwrite whatever natten is installed with the bundled wheel. Use if you suspect your natten is broken and want to fall back to the shipped one. |
+| `python install.py --skip-clone` | Skip the Pixal3D source clone (useful if you supplied your own `_pixal3d_src/`). |
+| `python install.py --skip-deps` | Skip BOTH requirements.txt AND the natten wheel install. Patches + sanity-check still run. |
+
+### What if my natten is broken?
+
+The installer's probe runs a real `natten.na2d(...)` call on cuda with the
+exact tensor shapes Pixal3D uses (different QK vs V head dims). If that
+errors, the probe prints `FAIL <ErrorType> <message>` and `install.py` falls
+through to install the bundled wheel. Common failure modes:
+
+- `RuntimeError: Can't run CUTLASS FNA; NATTEN was not built with libnatten.` →
+  your wheel is the pure-Python fallback, not the compiled extension. Rebuild
+  with `NATTEN_WITH_CUDA=1`.
+- `no kernel image is available for execution on the device` → SASS target is
+  too old for your GPU. Re-emit `<arch>-virtual` in `CUDA_ARCHITECTURES` so
+  PTX JIT can forward-compile (this repo's wheel does this with
+  `NATTEN_CUDA_ARCH=8.9` → `89-real;89-virtual`).
+- `ImportError: cannot import name 'na2d_av'` → you installed natten 0.21.6+
+  pure-Python, which dropped the split API. Rebuild 0.21.0 from source per
+  steps 1-6 above.
+
 ## Why the patches are necessary
 
 | Symptom from a vanilla build | Patch |

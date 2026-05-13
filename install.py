@@ -119,12 +119,66 @@ def install_requirements(python: pathlib.Path) -> None:
     pip_install(python, ["--no-deps", "-r", str(req)])
 
 
+def natten_already_works(python: pathlib.Path) -> bool:
+    """Probe the worker python: do we have natten installed AND with the
+    libnatten C extension working AND able to run na2d on cuda?
+
+    Returns True only if all three hold — i.e. the user has either already
+    run this installer before OR built+installed their own natten wheel
+    (per docs/BUILD_NATTEN.md). In that case install.py should NOT
+    overwrite their natten with the bundled wheel.
+    """
+    probe = (
+        "import sys\n"
+        "try:\n"
+        "    import natten, torch\n"
+        "    if not torch.cuda.is_available():\n"
+        "        print('NO_CUDA'); sys.exit(0)\n"
+        "    if not natten.HAS_LIBNATTEN:\n"
+        "        print('NO_LIBNATTEN'); sys.exit(0)\n"
+        "    q = torch.randn(1,8,8,4,64,device='cuda',dtype=torch.float16)\n"
+        "    v = torch.randn(1,8,8,4,256,device='cuda',dtype=torch.float16)\n"
+        "    natten.na2d(q,q,v,kernel_size=(3,3),backend='cutlass-fna')\n"
+        "    print('OK', natten.__version__)\n"
+        "except Exception as _e:\n"
+        "    print('FAIL', type(_e).__name__, str(_e)[:120])\n"
+    )
+    try:
+        out = subprocess.check_output(
+            [str(python), "-c", probe], stderr=subprocess.STDOUT, timeout=120
+        ).decode("utf-8", errors="replace").strip()
+    except subprocess.CalledProcessError as e:
+        out = (e.output or b"").decode("utf-8", errors="replace").strip()
+    except Exception as e:
+        out = f"PROBE_ERROR {type(e).__name__} {e}"
+    # The probe may emit unrelated warnings on stderr (e.g.
+    # "expandable_segments not supported on this platform") that come BEFORE
+    # the print(). Scan all non-empty lines for the result marker — the
+    # probe's print is the authoritative line, anything else is noise.
+    verdict_line = ""
+    for ln in reversed(out.splitlines()):
+        s = ln.strip()
+        if s.startswith(("OK ", "FAIL ", "NO_CUDA", "NO_LIBNATTEN", "PROBE_ERROR")):
+            verdict_line = s
+            break
+    log(f"[natten probe] {verdict_line or out}")
+    return verdict_line.startswith("OK ")
+
+
 def install_natten_wheel(python: pathlib.Path) -> None:
+    if natten_already_works(python):
+        log("natten is already installed and working — keeping it. "
+            "(Re-run with --force-natten-wheel to overwrite anyway.)")
+        return
+
     wheels = sorted((HERE / "wheels").glob("natten-*.whl"))
     if not wheels:
         raise SystemExit(
-            "No natten wheel in wheels/. Build one with docs/BUILD_NATTEN.md "
-            "or download a release asset."
+            "natten is not installed AND no wheel found in wheels/. Either:\n"
+            "  • re-download this repo (the wheel should be bundled), OR\n"
+            "  • build your own wheel via docs/BUILD_NATTEN.md and either\n"
+            "    install it manually before re-running this installer,\n"
+            "    or drop it into wheels/ and re-run this installer."
         )
     pip_install(python, ["--no-deps", "--force-reinstall", str(wheels[-1])])
 
@@ -180,6 +234,20 @@ def main() -> int:
         action="store_true",
         help="Don't pip-install requirements.txt or the natten wheel.",
     )
+    parser.add_argument(
+        "--skip-natten-wheel",
+        action="store_true",
+        help="Don't touch natten. Use when you built + installed your own "
+             "wheel for a different Python/PyTorch/GPU combo per "
+             "docs/BUILD_NATTEN.md. install.py still installs requirements.txt "
+             "and applies patches.",
+    )
+    parser.add_argument(
+        "--force-natten-wheel",
+        action="store_true",
+        help="Install the bundled natten wheel even if a working natten is "
+             "already detected. Overwrites a manually built natten.",
+    )
     args = parser.parse_args()
 
     trellis2 = find_trellis2_root()
@@ -192,7 +260,16 @@ def main() -> int:
         clone_pixal3d()
     if not args.skip_deps:
         install_requirements(worker_py)
-        install_natten_wheel(worker_py)
+        if args.skip_natten_wheel:
+            log("--skip-natten-wheel: leaving natten alone.")
+        elif args.force_natten_wheel:
+            log("--force-natten-wheel: bypassing the 'already works' probe.")
+            wheels = sorted((HERE / "wheels").glob("natten-*.whl"))
+            if not wheels:
+                raise SystemExit("No wheel in wheels/ to force-install.")
+            pip_install(worker_py, ["--no-deps", "--force-reinstall", str(wheels[-1])])
+        else:
+            install_natten_wheel(worker_py)
     apply_patches()
     sanity_check(worker_py)
 

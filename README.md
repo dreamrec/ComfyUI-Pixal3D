@@ -39,7 +39,10 @@ Pixal3D is licensed by Tencent for **academic / non-commercial use only**, and *
 
 The bundled `wheels/natten-0.21.0+winsm89ptx-...-win_amd64.whl` is locked to **Windows + Python 3.12 + PyTorch 2.8 + CUDA 12.8 + NVIDIA GPU**. If your setup matches all of the above (which the standard ComfyUI-Trellis2 pixi env does), the wheel just works.
 
-If any one of those doesn't match (you're on Linux / Python 3.11 / PyTorch 2.7 / etc.) you need to **rebuild natten for your env** — see [docs/BUILD_NATTEN.md](docs/BUILD_NATTEN.md). On Linux you can also just `pip install natten==0.21.0 -f https://whl.natten.org` to use the official prebuilt wheel.
+If any one of those doesn't match (you're on Linux / Python 3.11 / PyTorch 2.7 / etc.), you need to **install natten yourself for your env first**, then run `install.py` — it will auto-detect your natten and skip the bundled wheel. Two options:
+
+- **Linux**: `pip install natten==0.21.0 -f https://whl.natten.org` (official prebuilt wheels for many cu/torch combos), then run `install.py`.
+- **Windows with a non-default Python/PyTorch/GPU**: build from source per [docs/BUILD_NATTEN.md](docs/BUILD_NATTEN.md), then run `install.py`. The installer probes `natten.HAS_LIBNATTEN` + a real `na2d` call on cuda — if your wheel works, it's kept and the bundled one is skipped.
 
 **AMD / Intel GPUs are not supported** — upstream Pixal3D requires CUDA.
 
