@@ -1,0 +1,11 @@
+# Python deps that go into the comfy-env worker venv.
+# install.py wires these up into the ComfyUI-TRELLIS2 pixi env.
+
+# Image-to-3D conditioning + utilities
+git+https://github.com/microsoft/MoGe.git
+https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl
+
+# Mesh preview / render
+pyrender
+PyOpenGL>=3.1.7
+PyOpenGL-accelerate>=3.1.7

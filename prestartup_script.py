@@ -1,0 +1,34 @@
+"""Prestartup: extend `comfy_env` worker timeout for Pixal3D nodes.
+
+`comfy_env.isolation.metadata` hard-codes a 600s per-call timeout for proxied
+node methods. Pixal3D's `pipeline.run()` (cold-load of 24 GB of weights +
+4× DINOv3 + MoGe + NAF + the actual SS/Shape/Tex cascade) can exceed that on
+the first invocation. We bump it to 3600s for any class named `Pixal3D*`.
+
+Loaded BEFORE register_nodes() so the proxies pick up the patched timeout.
+"""
+
+try:
+    import comfy_env.isolation.workers.subprocess as _cews_sp
+
+    _orig_call_method = _cews_sp.SubprocessWorker.call_method
+
+    def _pixal3d_patched_call(self, module_name, class_name, method_name,
+                              self_state=None, kwargs=None, timeout=None):
+        if class_name and class_name.startswith("Pixal3D"):
+            timeout = max(timeout or 0.0, 3600.0)
+        return _orig_call_method(
+            self,
+            module_name=module_name,
+            class_name=class_name,
+            method_name=method_name,
+            self_state=self_state,
+            kwargs=kwargs,
+            timeout=timeout,
+        )
+
+    _cews_sp.SubprocessWorker.call_method = _pixal3d_patched_call
+    print("[ComfyUI-Pixal3D-prestartup] SubprocessWorker.call_method patched "
+          "(timeout 3600s for Pixal3D*)")
+except Exception as e:
+    print(f"[ComfyUI-Pixal3D-prestartup] timeout patch skipped: {e}")

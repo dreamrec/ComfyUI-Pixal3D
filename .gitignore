@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.DS_Store
+Thumbs.db
+
+# Local install artefacts that should not ship with the repo
+_pixal3d_src/
+_natten_src/
+_build_*.log
+wheels/_build.log
+pixal3d_autotune_cache.json
+
+# Local editor / IDE state
+.vscode/
+.idea/
+
+# Local model caches must never be committed (multi-GB)
+hf_cache/
+models/
+*.safetensors
