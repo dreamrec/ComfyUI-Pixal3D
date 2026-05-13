@@ -1,14 +1,20 @@
 [project]
 name = "comfyui-pixal3d"
 description = "ComfyUI custom node wrapping Tencent's SIGGRAPH 2026 Pixal3D — single image to PBR-textured 3D mesh on Windows + NVIDIA RTX 30/40/50."
-version = "0.1.0"
+version = "0.1.1"
 license = { file = "LICENSE" }
 dependencies = []
+classifiers = [
+    "Operating System :: Microsoft :: Windows",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
 
 [project.urls]
 Repository = "https://github.com/dreamrec/ComfyUI-Pixal3D"
+Documentation = "https://github.com/dreamrec/ComfyUI-Pixal3D#readme"
 bugs = "https://github.com/dreamrec/ComfyUI-Pixal3D/issues"
 
 [tool.comfy]
 PublisherId = "dreamrec"
 DisplayName = "ComfyUI-Pixal3D"
+Banner = "https://raw.githubusercontent.com/dreamrec/ComfyUI-Pixal3D/main/docs/images/demo_4view.png"
