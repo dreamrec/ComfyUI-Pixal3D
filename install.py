@@ -56,30 +56,94 @@ def find_trellis2_root() -> pathlib.Path:
     )
 
 
-def find_worker_python(trellis2_root: pathlib.Path) -> pathlib.Path:
-    """Look for the pixi-managed python that comfy-env created for TRELLIS2."""
-    # 1. Most common: the env_dir is recorded in a `.comfy-env-root.toml`.
-    for marker in ("comfy-env-root.toml", ".comfy-env-root.toml"):
-        p = trellis2_root / marker
-        if p.is_file():
-            for line in p.read_text(encoding="utf-8").splitlines():
-                if "env_dir" in line and "=" in line:
-                    raw = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    py = pathlib.Path(raw) / ".pixi" / "envs" / "default" / "python.exe"
-                    if py.is_file():
-                        return py
+_WORKER_PY_SUFFIXES = (
+    # comfy-env / pixi layouts. `env/` is usually a symlink to
+    # `.pixi/envs/default/`, but on some installs only one exists.
+    pathlib.Path("env") / "python.exe",
+    pathlib.Path(".pixi") / "envs" / "default" / "python.exe",
+    # In-plugin Windows venv (e.g. ComfyUI-Env-Manager style).
+    pathlib.Path("Scripts") / "python.exe",
+)
 
-    # 2. Scan typical comfy-env install root.
+
+def _candidate_pythons(roots: list[pathlib.Path]) -> list[pathlib.Path]:
+    """Expand a list of env-root directories into possible worker python paths."""
+    hits: list[pathlib.Path] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for sub in _WORKER_PY_SUFFIXES:
+            p = root / sub
+            if p.is_file():
+                hits.append(p)
+    return hits
+
+
+def find_worker_python(trellis2_root: pathlib.Path) -> pathlib.Path:
+    """Look for the worker python that comfy-env / comfy-env-manager created for TRELLIS2.
+
+    Tries several layouts in order:
+      1. An explicit `env_dir` recorded in `comfy-env-root.toml` (legacy).
+      2. Any `_env_*` directory living *inside* the TRELLIS2 plugin (newer
+         comfy-env-manager layout puts the env there).
+      3. Any `_env_*` under `C:\\ce\\` (the original comfy-env install root).
+
+    Each candidate root is probed against `env/python.exe`,
+    `.pixi/envs/default/python.exe`, and `Scripts/python.exe`.
+    """
+    try:
+        import tomllib  # Python 3.11+
+    except ModuleNotFoundError:  # pragma: no cover — pyproject pins py3.12
+        tomllib = None  # type: ignore[assignment]
+
+    # 1. Explicit env_dir in comfy-env-root.toml (legacy — newer comfy-env
+    #    versions write [cuda]/[node_reqs] only, with no env path).
+    if tomllib is not None:
+        for marker in ("comfy-env-root.toml", ".comfy-env-root.toml"):
+            p = trellis2_root / marker
+            if not p.is_file():
+                continue
+            try:
+                cfg = tomllib.loads(p.read_text(encoding="utf-8"))
+            except tomllib.TOMLDecodeError:
+                continue
+            # `env_dir` may live at the top level or under a section.
+            explicit_roots: list[pathlib.Path] = []
+            stack: list = [cfg]
+            while stack:
+                node = stack.pop()
+                if isinstance(node, dict):
+                    for k, v in node.items():
+                        if k in ("env_dir", "env_root", "env_path") and isinstance(v, str):
+                            explicit_roots.append(pathlib.Path(v))
+                        elif isinstance(v, (dict, list)):
+                            stack.append(v)
+                elif isinstance(node, list):
+                    stack.extend(node)
+            for py in _candidate_pythons(explicit_roots):
+                return py
+
+    # 2. In-plugin envs (newer comfy-env-manager drops `_env_*/` next to the plugin).
+    in_plugin = sorted(trellis2_root.glob("_env_*"), key=lambda p: p.name)
+    for py in _candidate_pythons(in_plugin):
+        return py
+
+    # 3. Original C:\ce install root.
     fallback_root = pathlib.Path(r"C:\ce")
     if fallback_root.is_dir():
-        candidates = sorted(fallback_root.glob("_env_*/.pixi/envs/default/python.exe"))
-        if candidates:
-            return candidates[-1]
+        # Sort newest-name-last so the most recent env wins.
+        roots = sorted(fallback_root.glob("_env_*"), key=lambda p: p.name)
+        for py in _candidate_pythons(reversed(roots)):
+            return py
 
     raise SystemExit(
-        f"Could not locate the ComfyUI-Trellis2 worker python. Looked under "
-        f"{fallback_root}. Make sure ComfyUI-Trellis2 has been installed and "
-        f"its pixi env initialised at least once."
+        f"Could not locate the ComfyUI-Trellis2 worker python.\n"
+        f"Looked under:\n"
+        f"  • env_dir from {trellis2_root / 'comfy-env-root.toml'}\n"
+        f"  • {trellis2_root}/_env_*/(env|.pixi/envs/default|Scripts)/python.exe\n"
+        f"  • {fallback_root}/_env_*/(env|.pixi/envs/default|Scripts)/python.exe\n"
+        f"Pass --python <path-to-worker-python.exe> to override, or make sure "
+        f"ComfyUI-Trellis2 has been installed and its env initialised at least once."
     )
 
 

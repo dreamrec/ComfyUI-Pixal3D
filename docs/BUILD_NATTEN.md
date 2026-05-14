@@ -2,7 +2,7 @@
 
 We ship a precompiled wheel in `wheels/`:
 
-> `natten-0.21.0+winsm89-cp312-cp312-win_amd64.whl`
+> `natten-0.21.0+winsm89ptx-cp312-cp312-win_amd64.whl`
 
 The wheel targets **`sm_89`** (Ada Lovelace) with PTX forward-compat, so it
 runs natively on RTX 40-series cards and JIT-compiles on first launch for

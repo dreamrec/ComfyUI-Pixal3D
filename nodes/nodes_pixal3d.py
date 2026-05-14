@@ -1,9 +1,6 @@
 """ComfyUI nodes for Pixal3D (pixel-aligned image-to-3D)."""
 
 import logging
-import os
-
-import folder_paths
 
 log = logging.getLogger("trellis2.pixal3d")
 

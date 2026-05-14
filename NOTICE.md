@@ -37,7 +37,7 @@ node run.
 
 ## Bundled binary
 
-`wheels/natten-0.21.0+winsm89-cp312-cp312-win_amd64.whl` is a locally compiled
+`wheels/natten-0.21.0+winsm89ptx-cp312-cp312-win_amd64.whl` is a locally compiled
 build of NATTEN 0.21.0 (MIT, © 2022–2025 Ali Hassani) patched for MSVC + CUDA
 12.8 + RTX 50-series PTX forward-compat. The wheel embeds its own LICENSE in
 its metadata. Our build patches are visible in `patches/natten_msvc.diff`.

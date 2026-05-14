@@ -6,6 +6,16 @@ node methods. Pixal3D's `pipeline.run()` (cold-load of 24 GB of weights +
 the first invocation. We bump it to 3600s for any class named `Pixal3D*`.
 
 Loaded BEFORE register_nodes() so the proxies pick up the patched timeout.
+
+Defensive — not strictly required in the in-process registration model used by
+this plugin's `nodes/__init__.py` (Pixal3D node classes are imported directly
+into the main ComfyUI process, so they never go through `SubprocessWorker`).
+The patch survives as cheap insurance against two paths:
+  (a) future versions of this plugin that wrap Pixal3D in comfy_env after all,
+  (b) downstream nodes (or `Pixal3D: Load Pipeline`-style warmup nodes embedded
+      in TRELLIS2) that still proxy through the subprocess worker.
+If `comfy_env` is not installed in the ComfyUI environment, the try/except
+below makes this prestartup a no-op — Pixal3D itself doesn't depend on it.
 """
 
 try:

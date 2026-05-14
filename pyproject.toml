@@ -1,12 +1,18 @@
 [project]
 name = "comfyui-pixal3d"
 description = "ComfyUI custom node wrapping Tencent's SIGGRAPH 2026 Pixal3D — single image to PBR-textured 3D mesh on Windows + NVIDIA RTX 30/40/50."
-version = "0.1.1"
+version = "0.1.2"
 license = { file = "LICENSE" }
+# The bundled natten wheel is cp312-cp312, and pixal3d_stages.py / install.py
+# both assume the TRELLIS2 pixi env is Python 3.12 + torch 2.8 + cu128. Gate
+# the install so pip refuses earlier Python interpreters rather than failing
+# at runtime with an unhelpful ABI mismatch.
+requires-python = ">=3.12"
 dependencies = []
 classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Environment :: GPU :: NVIDIA CUDA",
+    "Programming Language :: Python :: 3.12",
 ]
 
 [project.urls]
