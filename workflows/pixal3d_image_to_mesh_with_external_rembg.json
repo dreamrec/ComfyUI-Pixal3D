@@ -362,7 +362,9 @@
         4096,
         true,
         "gray",
-        true
+        true,
+        true,
+        "pixal3d"
       ]
     },
     {

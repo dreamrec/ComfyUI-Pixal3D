@@ -435,10 +435,13 @@ def run_pixal3d(
     decimation_target: int = 200000,
     texture_size: int = 2048,
     remesh: bool = True,
-) -> Tuple[Any, torch.Tensor, dict]:
+    save_to_output_dir: bool = True,
+    output_filename_prefix: str = "pixal3d",
+) -> Tuple[Any, torch.Tensor, dict, str]:
     """Full Pixal3D image-to-mesh pipeline.
 
-    Returns: (trimesh_scene, preprocessed_comfy_image, camera_params_dict)
+    Returns: (trimesh_scene, preprocessed_comfy_image, camera_params_dict,
+              glb_path_str)
     """
     # ComfyUI's execution.py:734 wraps every node FUNCTION call in
     # `torch.inference_mode()`. Inside that ambient context, every tensor
@@ -469,6 +472,8 @@ def run_pixal3d(
             decimation_target=decimation_target,
             texture_size=texture_size,
             remesh=remesh,
+            save_to_output_dir=save_to_output_dir,
+            output_filename_prefix=output_filename_prefix,
         )
 
 
@@ -481,7 +486,8 @@ def _run_pixal3d_body(*, image, mask, low_vram, seed, pipeline_type,
                       shape_sampling_steps, shape_rescale_t,
                       tex_guidance_strength, tex_guidance_rescale,
                       tex_sampling_steps, tex_rescale_t,
-                      decimation_target, texture_size, remesh):
+                      decimation_target, texture_size, remesh,
+                      save_to_output_dir, output_filename_prefix):
     import o_voxel
 
     if pipeline_type not in PIPELINE_TYPES:
@@ -602,23 +608,36 @@ def _run_pixal3d_body(*, image, mask, low_vram, seed, pipeline_type,
 
     # Side-effect: drop a timestamped .glb in ComfyUI's output dir so users
     # always get a real artifact even without chaining an export node.
-    try:
-        import folder_paths, time as _t
-        out_dir = pathlib.Path(folder_paths.get_output_directory())
-        out_dir.mkdir(parents=True, exist_ok=True)
-        # time_ns() rather than time() so two runs in the same second with
-        # the same seed don't collide (e.g. quick re-queue, or the same
-        # workflow with `seed=fixed` clicked twice).
-        glb_path = out_dir / f"pixal3d_{_t.time_ns()}_{seed}.glb"
-        # extension_webp=True (the upstream inference.py default) embeds WebP
-        # textures which Blender/STB cannot decode. Stick to PNG for max compat.
-        glb.export(str(glb_path))
-        log.info(f"[Pixal3D] GLB written: {glb_path}")
-    except Exception as e:
-        log.warning(f"[Pixal3D] GLB auto-save failed: {e}")
+    # The path is also returned in the result tuple so it can be wired
+    # straight into Preview3D / SaveGLB downstream nodes.
+    glb_path_str = ""
+    if save_to_output_dir:
+        try:
+            import folder_paths, time as _t
+            out_dir = pathlib.Path(folder_paths.get_output_directory())
+            out_dir.mkdir(parents=True, exist_ok=True)
+            # time_ns() rather than time() so two runs in the same second with
+            # the same seed don't collide (e.g. quick re-queue, or the same
+            # workflow with `seed=fixed` clicked twice). Sanitize the user
+            # prefix to ASCII-alphanumeric + underscore so it can't escape
+            # the output directory via path traversal.
+            safe_prefix = "".join(
+                c if (c.isalnum() or c in ("_", "-")) else "_"
+                for c in (output_filename_prefix or "pixal3d")
+            ).strip("_") or "pixal3d"
+            glb_path = out_dir / f"{safe_prefix}_{_t.time_ns()}_{seed}.glb"
+            # extension_webp=True (the upstream inference.py default) embeds WebP
+            # textures which Blender/STB cannot decode. Stick to PNG for max compat.
+            glb.export(str(glb_path))
+            glb_path_str = str(glb_path)
+            log.info(f"[Pixal3D] GLB written: {glb_path}")
+        except Exception as e:
+            log.warning(f"[Pixal3D] GLB auto-save failed: {e}")
+    else:
+        log.info("[Pixal3D] save_to_output_dir=False — skipping auto-save")
 
     preprocessed_tensor = _pil_to_comfy_image(preprocessed)
-    return glb, preprocessed_tensor, camera_params
+    return glb, preprocessed_tensor, camera_params, glb_path_str
 
 
 def free_pipeline():

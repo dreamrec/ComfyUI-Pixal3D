@@ -31,10 +31,21 @@ class Pixal3DLoadPipeline:
     DESCRIPTION = "Pre-load Pixal3D pipeline + DinoV3 extractors + MoGe-2."
 
     def load(self, low_vram=False):
+        import time
         from .pixal3d_stages import load_pipeline, load_moge
 
+        # Per-stage timing surfaces the cold-load cost. On a warm cache both
+        # numbers are <1 s; on a cold pixi env worker the Pixal3D-pipeline
+        # phase dominates (HuggingFace cache → 4× DinoV3 + Pixal3D weights
+        # → GPU transfer). Useful when diagnosing "is it stuck?".
+        t0 = time.perf_counter()
         load_pipeline(low_vram=low_vram)
+        t1 = time.perf_counter()
+        log.info(f"[Pixal3DLoadPipeline] pipeline loaded in {t1 - t0:.1f}s")
         load_moge()
+        t2 = time.perf_counter()
+        log.info(f"[Pixal3DLoadPipeline] MoGe-2 loaded in {t2 - t1:.1f}s "
+                 f"(total {t2 - t0:.1f}s)")
         return ({"low_vram": low_vram},)
 
 
@@ -84,18 +95,22 @@ class Pixal3DImageToMesh:
                 # `len(widgets_values) >= len(INPUT_TYPES)` not strict equality.
                 "background_color": (["gray", "black", "white"], {"default": "gray", "tooltip": "Color composited behind the foreground mask. Default 'gray' (128,128,128) prevents dark-silhouette bleed that bakes thin black lines into the PBR texture; 'black' matches Pixal3D inference.py defaults but causes those artifacts; 'white' for light-on-dark subjects."}),
                 "keep_warm": ("BOOLEAN", {"default": True, "tooltip": "True: keep the loaded Pixal3D pipeline in VRAM after this run (~14 GB) so the NEXT call is fast (~3 min instead of ~7-10 min cold-load). False: auto-free the pipeline at the end of THIS call. Use False if you're done with Pixal3D for a while and need that VRAM back for other nodes."}),
+                "save_to_output_dir": ("BOOLEAN", {"default": True, "tooltip": "When True, auto-save the GLB to ComfyUI/output/<prefix>_<unix_ns>_<seed>.glb. Disable for chained workflows that export downstream via another node — leaves the mesh in memory only."}),
+                "output_filename_prefix": ("STRING", {"default": "pixal3d", "tooltip": "Prefix for the auto-saved GLB filename. Final name: <prefix>_<unix_ns>_<seed>.glb. Ignored if save_to_output_dir=False."}),
             },
         }
 
-    RETURN_TYPES = ("TRIMESH", "IMAGE", "FLOAT", "FLOAT")
-    RETURN_NAMES = ("mesh", "preprocessed_image", "camera_angle_x", "distance")
+    RETURN_TYPES = ("TRIMESH", "IMAGE", "FLOAT", "FLOAT", "STRING")
+    RETURN_NAMES = ("mesh", "preprocessed_image", "camera_angle_x", "distance", "glb_path")
     FUNCTION = "generate"
     CATEGORY = "Pixal3D"
     DESCRIPTION = """Pixal3D pixel-aligned image-to-3D.
 
-Outputs a textured trimesh (PBR) plus the preprocessed image and the
-camera params actually used (helpful for retrying with manual overrides).
-Chain TRIMESH into Trellis2RenderPreview / Trellis2ExportGLB."""
+Outputs a textured trimesh (PBR) plus the preprocessed image, the camera
+params actually used (helpful for retrying with manual overrides), and
+the absolute path of the auto-saved GLB. Chain the path directly into
+`Preview3D` to skip the explicit Trellis2ExportTrimesh step. Empty
+string if save_to_output_dir=False."""
 
     def generate(
         self,
@@ -127,12 +142,14 @@ Chain TRIMESH into Trellis2RenderPreview / Trellis2ExportGLB."""
         texture_size=2048,
         remesh=True,
         keep_warm=True,
+        save_to_output_dir=True,
+        output_filename_prefix="pixal3d",
     ):
         from .pixal3d_stages import run_pixal3d, free_pipeline
 
         effective_low_vram = pipeline_ready["low_vram"] if pipeline_ready else low_vram
 
-        glb, preprocessed_tensor, cam = run_pixal3d(
+        glb, preprocessed_tensor, cam, glb_path = run_pixal3d(
             image,
             mask=mask,
             low_vram=effective_low_vram,
@@ -159,6 +176,8 @@ Chain TRIMESH into Trellis2RenderPreview / Trellis2ExportGLB."""
             decimation_target=decimation_target,
             texture_size=texture_size,
             remesh=remesh,
+            save_to_output_dir=save_to_output_dir,
+            output_filename_prefix=output_filename_prefix,
         )
 
         # `keep_warm=False` is for users sharing the GPU with other
@@ -169,7 +188,7 @@ Chain TRIMESH into Trellis2RenderPreview / Trellis2ExportGLB."""
             log.info("[Pixal3D] keep_warm=False — releasing pipeline singletons")
             free_pipeline()
 
-        return (glb, preprocessed_tensor, cam["camera_angle_x"], cam["distance"])
+        return (glb, preprocessed_tensor, cam["camera_angle_x"], cam["distance"], glb_path)
 
 
 class Pixal3DFreePipeline:
