@@ -24,7 +24,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "## Quality settings + low-VRAM tweaks\n\nDefaults below target a **higher-fidelity safe** combo verified on an RTX 5090: 1024_cascade + 16/16/16 sampling steps + 65k tokens + 300k decimation + 4096 texture. Wall time: ~3-4 min once the pipeline is warm; ~7-10 min on the first run after a ComfyUI restart (cold-load).\n\nIf you OOM on a 12-16 GB card, edit the **Pixal3DImageToMesh** widgets in this order until it fits:\n\n1. **max_num_tokens**: 65536 -> **24576** (smaller HR activation budget)\n2. **ss / shape / tex sampling_steps**: 16 -> **8** each\n3. **decimation_target**: 300000 -> **100000** (lighter mesh post-proc)\n4. **texture_size**: 4096 -> **1024**\n5. **low_vram**: false -> **true** (CPU offload between stages; ~2x wall time)\n\nCards with 24 GB+ should **stay on 1024_cascade**. The 1536_cascade pipeline overshoots VRAM once ComfyUI Desktop reserves its 16 GB cast buffer - see the README \"Memory + performance\" table."
+        "## Quality + VRAM settings\n\nDefaults below are tuned for **standalone-mode safety** (Pixal3D running in ComfyUI Desktop's .venv with comfy-aimdo's 16 GB cast buffer reserved):\n- 1024_cascade + 16/16/16 sampling steps + **32k tokens** + 300k decimation + 4096 texture\n- **low_vram=True** (per-stage CPU offload; works on 16-24 GB cards)\n- Wall time: ~3-5 min warm, ~7-10 min cold-load.\n\n**To go faster on 32 GB+ cards (RTX 5090, A6000 etc.):** flip **low_vram** to **False**. Cuts wall time roughly in half.\n\n**If you OOM on a 12-16 GB card**, edit the **Pixal3DImageToMesh** widgets in this order until it fits:\n\n1. **max_num_tokens**: 32768 -> **24576** (smaller HR activation budget)\n2. **ss / shape / tex sampling_steps**: 16 -> **8** each\n3. **decimation_target**: 300000 -> **100000** (lighter mesh post-proc)\n4. **texture_size**: 4096 -> **1024**\n\nCards with 24 GB+ should **stay on 1024_cascade**. The 1536_cascade pipeline overshoots VRAM once ComfyUI Desktop reserves its 16 GB cast buffer - see the README \"Memory + performance\" table."
       ],
       "title": "Low-VRAM tweaks (read first)",
       "color": "#432",
@@ -340,8 +340,8 @@
         "1024_cascade",
         42,
         "fixed",
-        false,
-        65536,
+        true,
+        32768,
         1.0,
         512,
         0.0,

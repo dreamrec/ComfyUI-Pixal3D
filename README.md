@@ -140,19 +140,22 @@ GLBs are auto-saved to `ComfyUI/output/pixal3d_<timestamp>_<seed>.glb` with PNG-
 
 ## Memory + performance
 
-| Setting | VRAM peak | Time | Quality |
+> **Two runtime modes, two ceilings.** v0.1.7+ runs Pixal3D in-process inside ComfyUI Desktop's `.venv` (standalone mode), which means `comfy-aimdo` is loaded and reserves a **16 GB cudaMallocAsync cast buffer** on top of Pixal3D's own weights + activations. Numbers below are for standalone mode; the legacy TRELLIS2 worker-env path is ~16 GB lighter at every setting.
+
+| Setting | VRAM peak (standalone) | Time | Quality |
 |---|---|---|---|
-| `1024_cascade` + steps 16/16/16 + 65k tokens + 300k decim + 4096 tex (bundled workflow defaults, v0.1.3+) | ~14 GB | ~3 min warm / ~7-10 min cold | High-fidelity safe |
-| `1024_cascade` + steps 12/12/12 + 49k tokens + 200k decim + 2048 tex | ~12 GB | ~3-5 min | Recommended |
-| `1024_cascade` + steps 4/4/4 + 32k tokens | ~7 GB | ~1.5 min | Preview |
+| `1024_cascade` + steps 16/16/16 + **32k tokens** + 300k decim + 4096 tex + **low_vram=true** (bundled workflow defaults, v0.1.9+) | ~17 GB | ~3-5 min warm | High-fidelity safe — works on 16-24 GB cards |
+| Same as above + **low_vram=false** (32 GB+ cards) | ~28-30 GB | ~2-3 min warm | Fastest, RTX 5090-class only |
+| `1024_cascade` + steps 12/12/12 + 32k tokens + 200k decim + 2048 tex + low_vram=true | ~14 GB | ~3 min warm | Recommended balance |
+| `1024_cascade` + steps 8/8/8 + 16k tokens + low_vram=true | ~10 GB | ~1.5-2 min warm | Preview / tight cards |
 | `1536_cascade` + steps 16/16/16 + 4096 tex | ~46 GB | crashes on ≤34 GB cards | **Currently OOMs** (see below) |
-| `low_vram=true` + 24k tokens | ~8 GB | ~6-8 min | Tight cards |
 
 Bullets on a few non-obvious VRAM facts we've measured:
 
 - **`keep_warm` widget (v0.1.4+):** the Pixal3D pipeline is ~14 GB resident once loaded; `keep_warm=True` (default) leaves it in VRAM so the next call is ~3 min, `keep_warm=False` auto-frees it at the end of the run (next call pays the ~7-10 min cold-load again).
-- **Cold-load tax:** the first run after a ComfyUI restart on this user's setup spends 1-3 min loading Pixal3D weights into RAM and another 30-60 s transferring to GPU. Subsequent runs hit the cached singleton.
-- **The "1536 OOM" ceiling:** `1536_cascade` registers ~30 GB of model weights and ComfyUI Desktop's bundled `model_management.py` reserves an additional 16 GB cudaMallocAsync cast buffer via `comfy-aimdo 0.4.0` — total 46 GB, which overshoots the 5090's 34 GB and silently crashes the worker mid-`pipeline.to(device)`. The bundled workflows stay on `1024_cascade` until upstream lands a fix (see below).
+- **Cold-load tax:** the first run after a ComfyUI restart spends 1-3 min loading Pixal3D weights into RAM and another 30-60 s transferring to GPU. Subsequent runs hit the cached singleton.
+- **The standalone-mode `comfy-aimdo` tax:** in-process mode loads `mmgp` and pre-allocates a 16 GB cast buffer for fp/bf casts. This is why `16/16/16 + 65k tokens + low_vram=false` (the old v0.1.3 defaults that ran ~14 GB peak in the worker env) now OOMs at ~30 GB on a 5090. v0.1.9 demos default to `32k tokens + low_vram=true` so the same workflow fits on 16-24 GB cards. Flip `low_vram=false` for 32 GB+ to get full speed back.
+- **The "1536 OOM" ceiling:** `1536_cascade` registers ~30 GB of model weights, plus the 16 GB cast buffer — total ~46 GB. Overshoots the 5090's 34 GB and silently crashes mid-`pipeline.to(device)`. The bundled workflows stay on `1024_cascade` until upstream lands a tiled-decoder fix (see below).
 
 ### Upstream roadmap
 
