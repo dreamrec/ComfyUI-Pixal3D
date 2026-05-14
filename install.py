@@ -2,20 +2,22 @@
 ComfyUI-Pixal3D installer.
 
 Steps (idempotent — safe to re-run):
-  1. Locate the sibling ComfyUI-Trellis2 custom node (we reuse its pixi env).
-  2. Resolve the worker Python executable from ComfyUI-Trellis2's comfy-env config.
-  3. Clone TencentARC/Pixal3D@master into `_pixal3d_src/` (skip if present).
-  4. `pip install --no-deps` the contents of `requirements.txt`.
-  5. `pip install --no-deps` the bundled natten wheel from `wheels/`.
-  6. Apply the BiRefNet inference-mode patch.
-  7. Sanity-import pixal3d + natten + moge + utils3d in the worker env.
+  1. Pick the target Python:
+     • Legacy worker mode: if pozzettiandrea's ComfyUI-TRELLIS2 sibling is
+       installed, install deps into its comfy-env worker python.
+     • Standalone mode: otherwise install into the current `sys.executable`
+       (the .venv ComfyUI Desktop / Manager runs install.py with).
+  2. Clone TencentARC/Pixal3D@master into `_pixal3d_src/` (skip if present).
+  3. `pip install --no-deps` the contents of `requirements.txt`.
+  4. `pip install --no-deps` the bundled natten wheel from `wheels/`.
+  5. Apply the BiRefNet inference-mode patch.
+  6. Sanity-import pixal3d + natten + moge + utils3d in the target env.
 
 Run from inside `custom_nodes/ComfyUI-Pixal3D/`:
 
-    "<worker_python>" install.py
+    "<python>" install.py
 
-The script auto-detects the worker python; if detection fails it prints a
-clear error and exits.
+Use `--python <path>` to override target detection.
 """
 
 from __future__ import annotations
@@ -51,8 +53,8 @@ def find_trellis2_root() -> pathlib.Path:
     if candidate.is_dir():
         return candidate
     raise SystemExit(
-        f"Could not find ComfyUI-Trellis2 next to {HERE}. "
-        "Install https://github.com/visualbruno/ComfyUI-Trellis2 first."
+        f"Could not find ComfyUI-TRELLIS2 next to {HERE}. "
+        "Install https://github.com/pozzettiandrea/ComfyUI-TRELLIS2 first."
     )
 
 
@@ -84,9 +86,11 @@ def find_worker_python(trellis2_root: pathlib.Path) -> pathlib.Path:
 
     Tries several layouts in order:
       1. An explicit `env_dir` recorded in `comfy-env-root.toml` (legacy).
-      2. Any `_env_*` directory living *inside* the TRELLIS2 plugin (newer
+      2. Any `_env_*` under `C:\\ce\\` (the original comfy-env install root —
+         this is where TRELLIS2 actually runs, so it must win over any stub
+         `Scripts/python.exe` left in the plugin dir by side experiments).
+      3. Any `_env_*` directory living *inside* the TRELLIS2 plugin (newer
          comfy-env-manager layout puts the env there).
-      3. Any `_env_*` under `C:\\ce\\` (the original comfy-env install root).
 
     Each candidate root is probed against `env/python.exe`,
     `.pixi/envs/default/python.exe`, and `Scripts/python.exe`.
@@ -123,18 +127,19 @@ def find_worker_python(trellis2_root: pathlib.Path) -> pathlib.Path:
             for py in _candidate_pythons(explicit_roots):
                 return py
 
-    # 2. In-plugin envs (newer comfy-env-manager drops `_env_*/` next to the plugin).
-    in_plugin = sorted(trellis2_root.glob("_env_*"), key=lambda p: p.name)
-    for py in _candidate_pythons(in_plugin):
-        return py
-
-    # 3. Original C:\ce install root.
+    # 2. Original C:\ce install root — this is the comfy-env worker env that
+    #    actually runs TRELLIS2 nodes, so prefer it over any in-plugin stub.
     fallback_root = pathlib.Path(r"C:\ce")
     if fallback_root.is_dir():
         # Sort newest-name-last so the most recent env wins.
         roots = sorted(fallback_root.glob("_env_*"), key=lambda p: p.name)
-        for py in _candidate_pythons(reversed(roots)):
+        for py in _candidate_pythons(list(reversed(roots))):
             return py
+
+    # 3. In-plugin envs (newer comfy-env-manager drops `_env_*/` next to the plugin).
+    in_plugin = sorted(trellis2_root.glob("_env_*"), key=lambda p: p.name)
+    for py in _candidate_pythons(in_plugin):
+        return py
 
     raise SystemExit(
         f"Could not locate the ComfyUI-Trellis2 worker python.\n"
@@ -179,8 +184,59 @@ def install_requirements(python: pathlib.Path) -> None:
     req = HERE / "requirements.txt"
     if not req.is_file():
         raise SystemExit(f"requirements.txt not found at {req}")
+
+    # Pip auto-enables `--require-hashes` for the WHOLE file as soon as ANY
+    # line carries `--hash=`. VCS installs (git+https://...) can't be hashed,
+    # so passing requirements.txt directly fails with:
+    #   "Hash is required when a hash is supplied for another requirement"
+    # Split into three buckets and install them with separate `pip install`
+    # calls; each call enforces hash-mode only when its bucket has hashes.
+    #
+    # Bucket 1: VCS installs (no hashing possible) — install one at a time.
+    # Bucket 2: hash-pinned wheels (require-hashes activates automatically).
+    # Bucket 3: plain version specifiers.
+    vcs: list[str] = []
+    hashed_groups: list[list[str]] = []  # one group per `\` continuation block
+    plain: list[str] = []
+
+    current_hashed: list[str] = []
+    for raw_line in req.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Strip trailing line-continuation markers but keep the requirement
+        # text for the hash-bucket where it must travel together.
+        is_continuation_target = raw_line.rstrip().endswith("\\")
+        clean = line.rstrip("\\").strip()
+        if not clean:
+            continue
+        if clean.startswith("--hash="):
+            current_hashed.append(clean)
+            if not is_continuation_target:
+                hashed_groups.append(current_hashed)
+                current_hashed = []
+            continue
+        if is_continuation_target:
+            # Requirement that opens a hashed block.
+            current_hashed = [clean]
+            continue
+        if clean.startswith(("git+", "hg+", "svn+", "bzr+")):
+            vcs.append(clean)
+        else:
+            plain.append(clean)
+    # Anything left in current_hashed is malformed continuation; promote it
+    # to the hashed bucket so pip surfaces a clear error instead of silently
+    # dropping it.
+    if current_hashed:
+        hashed_groups.append(current_hashed)
+
     # --no-deps to avoid pip resolver fighting with the pixi-managed env.
-    pip_install(python, ["--no-deps", "-r", str(req)])
+    for vcs_url in vcs:
+        pip_install(python, ["--no-deps", vcs_url])
+    for group in hashed_groups:
+        pip_install(python, ["--no-deps", *group])
+    if plain:
+        pip_install(python, ["--no-deps", *plain])
 
 
 def natten_already_works(python: pathlib.Path) -> bool:
@@ -314,11 +370,28 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    trellis2 = find_trellis2_root()
-    log(f"ComfyUI-Trellis2 at: {trellis2}")
-
-    worker_py = pathlib.Path(args.python) if args.python else find_worker_python(trellis2)
-    log(f"Worker python: {worker_py}")
+    # Two install modes:
+    #   • Worker mode (legacy): pozzettiandrea's ComfyUI-TRELLIS2 sibling is
+    #     present and its comfy-env subprocess runs Pixal3D nodes — deps go
+    #     into that worker python.
+    #   • Standalone mode: no TRELLIS2 sibling. Pixal3D nodes run in-process
+    #     in ComfyUI's main Python; deps go into sys.executable (which the
+    #     Comfy Registry / Manager invoke install.py with).
+    # We try worker mode first for backward compat; if no TRELLIS2 is found,
+    # gracefully fall back to standalone instead of hard-failing.
+    if args.python:
+        worker_py = pathlib.Path(args.python)
+        log(f"Target python (explicit): {worker_py}")
+    else:
+        try:
+            trellis2 = find_trellis2_root()
+            log(f"ComfyUI-Trellis2 at: {trellis2}")
+            worker_py = find_worker_python(trellis2)
+            log(f"Worker python: {worker_py}")
+        except SystemExit as e:
+            worker_py = pathlib.Path(sys.executable)
+            log(f"No ComfyUI-TRELLIS2 sibling — standalone mode.")
+            log(f"Target python: {worker_py}")
 
     if not args.skip_clone:
         clone_pixal3d()

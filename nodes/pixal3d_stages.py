@@ -184,7 +184,16 @@ def load_pipeline(low_vram: bool = False, model_path: str = PIXAL3D_MODEL_PATH):
     from pixal3d.pipelines import Pixal3DImageTo3DPipeline
     from pixal3d.pipelines.rembg.BiRefNet import BiRefNet
 
-    log.info(f"[Pixal3D] Loading pipeline from {model_path}...")
+    # Pixal3D's loader (pixal3d/models/__init__.py:60) probes sub-model paths
+    # like "ckpts/ss_flow_img_dit_1_3B_64_bf16.json" with os.path.exists, which
+    # resolves relative to CWD. When running in-process under ComfyUI (CWD =
+    # ComfyUI/), the check fails and the HF fallback misparses the relative
+    # path as a repo ID ("ckpts/ss_flow_img_dit_1_3B_64_bf16") → 404. Resolve
+    # to an absolute snapshot dir up front so is_local=True everywhere.
+    from huggingface_hub import snapshot_download
+    log.info(f"[Pixal3D] Resolving {model_path} to local snapshot...")
+    local_snapshot = snapshot_download(model_path)
+    log.info(f"[Pixal3D] Loading pipeline from {local_snapshot}")
     # Override the gated briaai/RMBG-2.0 rembg model BEFORE from_pretrained
     # runs by monkey-patching the pipeline.json args. The pipeline.json is in
     # the HF cache snapshot; we override at the rembg class level instead by
@@ -199,7 +208,30 @@ def load_pipeline(low_vram: bool = False, model_path: str = PIXAL3D_MODEL_PATH):
         _orig_init(self, model_name=model_name)
     BiRefNet.__init__ = _patched_init
 
-    pipeline = Pixal3DImageTo3DPipeline.from_pretrained(model_path)
+    # comfy-aimdo's mmgp lib (shipped in ComfyUI Desktop's .venv) monkey-patches
+    # safetensors.torch.load_file with a mmap-based reader. Its dtype map at
+    # mmgp/safetensors2.py:33 omits complex dtypes; one of Pixal3D's decoder
+    # checkpoints contains a single C64 (complex64) coefficient tensor that
+    # triggers KeyError: 'C64'. Upstream pixal3d/pipelines/base.py:43-46 then
+    # silently retries with a relative path that misparses as a bogus HF repo
+    # ID ("ckpts/..."), producing a misleading 404. Extend mmgp's dtype map
+    # before loading so step 1 succeeds and the broken fallback never fires.
+    try:
+        from mmgp import safetensors2 as _mmgp_st2
+        if 'C64' not in _mmgp_st2._map_to_dtype:
+            _mmgp_st2._map_to_dtype['C64'] = torch.complex64
+            _mmgp_st2._map_to_dtype['C128'] = torch.complex128
+            log.info("[Pixal3D] Patched mmgp.safetensors2._map_to_dtype with C64/C128")
+    except (ImportError, AttributeError):
+        # mmgp not installed (comfy_env worker / non-Desktop ComfyUI) — no patch needed.
+        pass
+
+    # Also exit inference_mode for the load: ComfyUI wraps execution in
+    # torch.inference_mode() and load_state_dict's in-place copy_ has been
+    # observed to fail with version-counter errors on freshly-constructed
+    # nn.Module parameters under inference mode.
+    with torch.inference_mode(False):
+        pipeline = Pixal3DImageTo3DPipeline.from_pretrained(local_snapshot)
 
     # transformers' from_pretrained loads weights as inference-tensors which
     # Conv2d refuses to use outside inference_mode. Rescue rembg + the DINOv3
