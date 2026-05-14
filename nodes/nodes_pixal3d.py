@@ -78,9 +78,12 @@ class Pixal3DImageToMesh:
                 "decimation_target": ("INT", {"default": 200000, "min": 5000, "max": 1000000, "step": 5000}),
                 "texture_size": ("INT", {"default": 2048, "min": 256, "max": 4096, "step": 256}),
                 "remesh": ("BOOLEAN", {"default": True}),
-                # background_color is appended last so existing workflow JSONs
-                # don't shift all subsequent widget indices.
+                # New widgets MUST be appended below — older workflow JSONs
+                # use positional widgets_values lists and shift if we insert
+                # earlier. CI workflow at .github/workflows/ci.yml enforces
+                # `len(widgets_values) >= len(INPUT_TYPES)` not strict equality.
                 "background_color": (["gray", "black", "white"], {"default": "gray", "tooltip": "Color composited behind the foreground mask. Default 'gray' (128,128,128) prevents dark-silhouette bleed that bakes thin black lines into the PBR texture; 'black' matches Pixal3D inference.py defaults but causes those artifacts; 'white' for light-on-dark subjects."}),
+                "keep_warm": ("BOOLEAN", {"default": True, "tooltip": "True: keep the loaded Pixal3D pipeline in VRAM after this run (~14 GB) so the NEXT call is fast (~3 min instead of ~7-10 min cold-load). False: auto-free the pipeline at the end of THIS call. Use False if you're done with Pixal3D for a while and need that VRAM back for other nodes."}),
             },
         }
 
@@ -123,8 +126,9 @@ Chain TRIMESH into Trellis2RenderPreview / Trellis2ExportGLB."""
         decimation_target=200000,
         texture_size=2048,
         remesh=True,
+        keep_warm=True,
     ):
-        from .pixal3d_stages import run_pixal3d
+        from .pixal3d_stages import run_pixal3d, free_pipeline
 
         effective_low_vram = pipeline_ready["low_vram"] if pipeline_ready else low_vram
 
@@ -156,6 +160,15 @@ Chain TRIMESH into Trellis2RenderPreview / Trellis2ExportGLB."""
             texture_size=texture_size,
             remesh=remesh,
         )
+
+        # `keep_warm=False` is for users sharing the GPU with other
+        # workflows — release the ~14 GB pipeline singleton now rather
+        # than making them queue Pixal3D: Free Pipeline manually. The
+        # next Pixal3D call will pay the full cold-load again.
+        if not keep_warm:
+            log.info("[Pixal3D] keep_warm=False — releasing pipeline singletons")
+            free_pipeline()
+
         return (glb, preprocessed_tensor, cam["camera_angle_x"], cam["distance"])
 
 

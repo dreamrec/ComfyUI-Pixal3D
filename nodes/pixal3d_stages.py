@@ -552,13 +552,19 @@ def _run_pixal3d_body(*, image, mask, low_vram, seed, pipeline_type,
         max_num_tokens=max_num_tokens,
     )
 
-    # Free latents we don't keep around
-    del shape_slat, tex_slat
+    # Free latents we don't keep around. Order matters: drop tex_slat first
+    # (the larger of the two — PBR-channel latent at the texture grid) so
+    # mesh extraction below has maximum headroom.
+    del tex_slat, shape_slat
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     mesh = mesh_list[0]
+    # Drop the list wrapper now that we have the single mesh reference;
+    # if `num_samples > 1` ever gets exposed, this becomes the place where
+    # we'd loop over the list instead.
+    del mesh_list
     log.info(f"[Pixal3D] Extracting GLB (decim={decimation_target}, tex={texture_size})...")
     glb = o_voxel.postprocess.to_glb(
         vertices=mesh.vertices,
@@ -575,6 +581,12 @@ def _run_pixal3d_body(*, image, mask, low_vram, seed, pipeline_type,
         remesh_project=0,
         use_tqdm=True,
     )
+    # Release the raw mesh's voxel attrs/coords now that they've been baked
+    # into the GLB — these can be ~1-2 GB for the 1536_cascade case.
+    del mesh
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     # Same rotation as inference.py (Pixal3D space -> conventional Y-up)
     rot = np.array(

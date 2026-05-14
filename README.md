@@ -151,10 +151,28 @@ GLBs are auto-saved to `ComfyUI/output/pixal3d_<timestamp>_<seed>.glb` with PNG-
 
 | Setting | VRAM peak | Time | Quality |
 |---|---|---|---|
-| `1024_cascade` + steps 12/12/12 (defaults) | ~12 GB | ~3-5 min | Recommended |
-| `1024_cascade` + steps 4/4/4 + max_tokens 32768 | ~7 GB | ~1.5 min | Preview |
-| `1536_cascade` + steps 16/16/16 + tex_size 4096 | ~22 GB | ~8-12 min | Maximum |
-| `low_vram=true` + max_tokens 24576 | ~8 GB | ~6-8 min | Tight cards |
+| `1024_cascade` + steps 16/16/16 + 65k tokens + 300k decim + 4096 tex (bundled workflow defaults, v0.1.3+) | ~14 GB | ~3 min warm / ~7-10 min cold | High-fidelity safe |
+| `1024_cascade` + steps 12/12/12 + 49k tokens + 200k decim + 2048 tex | ~12 GB | ~3-5 min | Recommended |
+| `1024_cascade` + steps 4/4/4 + 32k tokens | ~7 GB | ~1.5 min | Preview |
+| `1536_cascade` + steps 16/16/16 + 4096 tex | ~46 GB | crashes on ≤34 GB cards | **Currently OOMs** (see below) |
+| `low_vram=true` + 24k tokens | ~8 GB | ~6-8 min | Tight cards |
+
+Bullets on a few non-obvious VRAM facts we've measured:
+
+- **`keep_warm` widget (v0.1.4+):** the Pixal3D pipeline is ~14 GB resident once loaded; `keep_warm=True` (default) leaves it in VRAM so the next call is ~3 min, `keep_warm=False` auto-frees it at the end of the run (next call pays the ~7-10 min cold-load again).
+- **Cold-load tax:** the first run after a ComfyUI restart on this user's setup spends 1-3 min loading Pixal3D weights into RAM and another 30-60 s transferring to GPU. Subsequent runs hit the cached singleton.
+- **The "1536 OOM" ceiling:** `1536_cascade` registers ~30 GB of model weights and ComfyUI Desktop's bundled `model_management.py` reserves an additional 16 GB cudaMallocAsync cast buffer via `comfy-aimdo 0.4.0` — total 46 GB, which overshoots the 5090's 34 GB and silently crashes the worker mid-`pipeline.to(device)`. The bundled workflows stay on `1024_cascade` until upstream lands a fix (see below).
+
+### Upstream roadmap (TRELLIS2 `pixal3d` branch — not yet merged to main)
+
+[`visualbruno/ComfyUI-Trellis2#pixal3d`](https://github.com/visualbruno/ComfyUI-Trellis2/tree/pixal3d) is actively iterating on a fix for the 1536 OOM:
+
+- **`use_tiled_decoder` widget** — tiles the high-res DinoV3 inference so peak VRAM drops below the 34 GB ceiling. This unlocks `1536_cascade` on 24 GB cards.
+- **`pipeline_type` expanded** to `["512", "1024", "1024_cascade", "1536_cascade"]` — adds lighter modes for 12-16 GB cards.
+- **Per-stage memory load/unload** — interleaved offload between sampler stages, slimming peak VRAM further.
+- **Standard `natten-0.21.6` wheel** bundled — our custom 60 MB `natten-0.21.0+winsm89ptx` becomes redundant.
+
+When that branch merges to TRELLIS2 main, this plugin will adopt the new knobs in a follow-up release.
 
 ---
 
