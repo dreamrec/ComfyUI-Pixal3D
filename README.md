@@ -15,7 +15,7 @@
   <a href="NOTICE.md"><img src="https://img.shields.io/badge/Pixal3D%20License-Academic%20%2F%20No--EU-red" alt="Pixal3D License: Academic / No-EU"></a>
 </p>
 
-ComfyUI custom node for **[Pixal3D](https://github.com/TencentARC/Pixal3D)** — Tencent's SIGGRAPH 2026 single-image to PBR-textured-3D pipeline — on **Windows** with **RTX 30/40/50** GPUs. Built on top of [ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2).
+ComfyUI custom node for **[Pixal3D](https://github.com/TencentARC/Pixal3D)** — Tencent's SIGGRAPH 2026 single-image to PBR-textured-3D pipeline — on **Windows** with **RTX 30/40/50** GPUs. Runs **standalone** in ComfyUI's main Python (no extra worker env needed); optionally piggybacks on [ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2)'s pixi env if you already have it.
 
 **One image → textured PBR mesh in ~3-5 min on an RTX 5090.**
 
@@ -39,7 +39,7 @@ Pixal3D is licensed by Tencent for **academic / non-commercial use only**, and *
 
 ## Will it work on my machine?
 
-**Short version:** if you have ComfyUI Desktop running TRELLIS2 successfully on an RTX 30/40/50 GPU, this will work too.
+**Short version:** if you're on ComfyUI Desktop with an RTX 30/40/50 (Python 3.12 + Torch 2.8 + CUDA 12.8 — the Desktop defaults), this will work standalone.
 
 | | Requirement |
 |---|---|
@@ -47,9 +47,9 @@ Pixal3D is licensed by Tencent for **academic / non-commercial use only**, and *
 | GPU | NVIDIA RTX 30 / 40 / 50 with ≥ **16 GB VRAM** (24 GB+ recommended; the bundled workflows ship with `1024_cascade` + 16/16/16 steps, see the Note node in each for low-VRAM tweaks) |
 | Disk | ~50 GB free (24 GB Pixal3D + 4 GB other models + workspace) |
 | CPU | Any modern x86_64 — **Intel and AMD both work**, no special requirements |
-| Python | **3.12 only** (your worker venv must be 3.12 — the bundled wheel is cp312) |
-| PyTorch | **2.8.x + CUDA 12.8** (your worker venv must match — wheel is built against torch 2.8.0+cu128) |
-| ComfyUI | Desktop (or portable) with **[ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2) already installed and launched once** |
+| Python | **3.12 only** (ComfyUI Desktop's `.venv` is 3.12 — bundled wheel is cp312) |
+| PyTorch | **2.8.x + CUDA 12.8** (Desktop's `.venv` matches by default — wheel is built against torch 2.8.0+cu128) |
+| ComfyUI | Desktop (or portable). **[ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2) is optional** — if installed, the installer drops deps into TRELLIS2's pixi env; otherwise it installs into ComfyUI's `.venv`. |
 
 ### Will the wheel work for me?
 
@@ -64,41 +64,31 @@ If any one of those doesn't match (you're on Linux / Python 3.11 / PyTorch 2.7 /
 
 ---
 
-## Prerequisites — TRELLIS2 must be working first
-
-This plugin **does not** install its own CUDA stack. It rides on top of ComfyUI-TRELLIS2's pixi-managed worker environment (which already contains o_voxel, cumesh, flex_gemm, nvdiffrast, flash_attn, etc.).
-
-**Before installing this plugin:**
-
-1. Install **[ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2)** via ComfyUI Manager (or git clone into `custom_nodes/`).
-2. **Launch ComfyUI Desktop once** — TRELLIS2's first launch bootstraps its pixi env at `C:\ce\_env_<hash>\.pixi\envs\default\`. You'll see "Starting server" in the log when it's ready.
-3. **Verify TRELLIS2 works** — load one of its example workflows and queue it. If TRELLIS2 itself errors, fix that first; Pixal3D won't help you.
-
-If you skip these, the Pixal3D installer can't find the worker Python and will exit with a clear error message.
-
----
-
 ## Install
+
+The fastest path is **ComfyUI Manager** — search for `ComfyUI-Pixal3D`, click Install, restart. The plugin's `install.py` runs automatically and installs all deps into ComfyUI's `.venv` (no extra worker env required).
+
+For a manual clone:
 
 ```powershell
 # 1. Open the custom_nodes folder
 cd $HOME\Documents\ComfyUI\custom_nodes
 
-# 2. Clone this repo *next to* ComfyUI-TRELLIS2 (NOT inside it)
+# 2. Clone this repo
 git clone https://github.com/dreamrec/ComfyUI-Pixal3D.git
 
-# 3. Run the installer
+# 3. Run the installer with ComfyUI's Python
 cd ComfyUI-Pixal3D
-python install.py
+& "$HOME\Documents\ComfyUI\.venv\Scripts\python.exe" install.py
 
 # 4. Restart ComfyUI Desktop
 ```
 
 What `install.py` does, in ~30 seconds:
 
-- Auto-detects the TRELLIS2 worker Python.
+- **Picks a target Python**: if `ComfyUI-TRELLIS2` (pozzettiandrea's fork) is installed alongside, drops deps into its pixi worker env; otherwise installs into the calling Python (your ComfyUI `.venv`).
 - Clones [TencentARC/Pixal3D](https://github.com/TencentARC/Pixal3D) at a pinned commit into `_pixal3d_src/`.
-- Installs MoGe + utils3d + pyrender + PyOpenGL into the worker venv.
+- Installs MoGe + utils3d + pyrender + PyOpenGL into the target env.
 - Installs the bundled natten wheel from `wheels/`.
 - Patches Pixal3D's BiRefNet for the Windows `inference_mode` interaction.
 - Sanity-checks all imports.
@@ -136,10 +126,11 @@ GLBs are auto-saved to `ComfyUI/output/pixal3d_<timestamp>_<seed>.glb` with PNG-
 
 | Error | Fix |
 |---|---|
-| `Could not find ComfyUI-TRELLIS2` during install | ComfyUI-TRELLIS2 isn't installed next to this repo, or it hasn't been launched once to bootstrap its pixi env. Install/launch TRELLIS2 first. |
-| `Inference tensors do not track version counter` mid-run | You're on an older version of this plugin. `git pull` and re-run `python install.py`. (Fixed by wrapping `run_pixal3d` in `torch.inference_mode(False)`.) |
+| `Repository Not Found for url: https://huggingface.co/ckpts/...` | You're on v0.1.6. Update to ≥ v0.1.7 — the 404 was a misleading wrapper around an `mmgp` complex-dtype `KeyError`, fixed in v0.1.7. |
+| `Input type (torch.cuda.FloatTensor) and weight type (torch.FloatTensor) should be the same` | You're on v0.1.7 and toggled `low_vram` between queue runs. Update to ≥ v0.1.8 — cache-hit device-resync fix. |
+| `Inference tensors do not track version counter` mid-run | You're on an older version of this plugin. `git pull` and re-run `install.py`. (Fixed by wrapping `run_pixal3d` in `torch.inference_mode(False)`.) |
 | Thin black lines on the textured mesh | Set the `background_color` widget on the node to `gray` (the default). If you're on an old saved workflow it may still have `black` — re-create the node from the menu. |
-| `No module named 'pyrender'` or PyOpenGL ctypes error | Worker venv missing render deps. Re-run `python install.py`. |
+| `No module named 'pyrender'` / `'moge'` or PyOpenGL ctypes error | Target env missing render deps. Re-run `install.py` with the SAME Python that ComfyUI uses (Desktop: `.venv\Scripts\python.exe`). |
 | `OSError: We couldn't connect to 'https://hf-mirror.com'` | Your environment has `HF_ENDPOINT` set to the Chinese mirror. The plugin overrides this internally; if you still hit it, restart ComfyUI after install. |
 | `OutOfMemoryError` / `Allocation on device` | Drop `max_num_tokens` to 32768 or 24576, optionally enable `low_vram` on the node. |
 | Blender refuses to open the GLB (`STB cannot decode image data`) | You have an old GLB from before this fix. Re-run; new GLBs use PNG textures. |
@@ -163,16 +154,16 @@ Bullets on a few non-obvious VRAM facts we've measured:
 - **Cold-load tax:** the first run after a ComfyUI restart on this user's setup spends 1-3 min loading Pixal3D weights into RAM and another 30-60 s transferring to GPU. Subsequent runs hit the cached singleton.
 - **The "1536 OOM" ceiling:** `1536_cascade` registers ~30 GB of model weights and ComfyUI Desktop's bundled `model_management.py` reserves an additional 16 GB cudaMallocAsync cast buffer via `comfy-aimdo 0.4.0` — total 46 GB, which overshoots the 5090's 34 GB and silently crashes the worker mid-`pipeline.to(device)`. The bundled workflows stay on `1024_cascade` until upstream lands a fix (see below).
 
-### Upstream roadmap (TRELLIS2 `pixal3d` branch — not yet merged to main)
+### Upstream roadmap
 
-A separate experimental fork at [`visualbruno/ComfyUI-Trellis2#pixal3d`](https://github.com/visualbruno/ComfyUI-Trellis2/tree/pixal3d) is iterating on a fix for the 1536 OOM (not yet upstreamed to `pozzettiandrea/ComfyUI-TRELLIS2`):
+An experimental fork at [`visualbruno/ComfyUI-Trellis2#pixal3d`](https://github.com/visualbruno/ComfyUI-Trellis2/tree/pixal3d) is iterating on a fix for the 1536 OOM (not yet upstreamed to `pozzettiandrea/ComfyUI-TRELLIS2`):
 
 - **`use_tiled_decoder` widget** — tiles the high-res DinoV3 inference so peak VRAM drops below the 34 GB ceiling. This unlocks `1536_cascade` on 24 GB cards.
 - **`pipeline_type` expanded** to `["512", "1024", "1024_cascade", "1536_cascade"]` — adds lighter modes for 12-16 GB cards.
 - **Per-stage memory load/unload** — interleaved offload between sampler stages, slimming peak VRAM further.
 - **Standard `natten-0.21.6` wheel** bundled — our custom 60 MB `natten-0.21.0+winsm89ptx` becomes redundant.
 
-When that branch merges to TRELLIS2 main, this plugin will adopt the new knobs in a follow-up release.
+When that branch merges, this plugin will adopt the new knobs in a follow-up release.
 
 ---
 
