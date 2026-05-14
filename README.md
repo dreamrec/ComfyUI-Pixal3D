@@ -15,7 +15,7 @@
   <a href="NOTICE.md"><img src="https://img.shields.io/badge/Pixal3D%20License-Academic%20%2F%20No--EU-red" alt="Pixal3D License: Academic / No-EU"></a>
 </p>
 
-ComfyUI custom node for **[Pixal3D](https://github.com/TencentARC/Pixal3D)** — Tencent's SIGGRAPH 2026 single-image to PBR-textured-3D pipeline — on **Windows** with **RTX 30/40/50** GPUs. Built on top of [ComfyUI-Trellis2](https://github.com/visualbruno/ComfyUI-Trellis2).
+ComfyUI custom node for **[Pixal3D](https://github.com/TencentARC/Pixal3D)** — Tencent's SIGGRAPH 2026 single-image to PBR-textured-3D pipeline — on **Windows** with **RTX 30/40/50** GPUs. Built on top of [ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2).
 
 **One image → textured PBR mesh in ~3-5 min on an RTX 5090.**
 
@@ -49,11 +49,11 @@ Pixal3D is licensed by Tencent for **academic / non-commercial use only**, and *
 | CPU | Any modern x86_64 — **Intel and AMD both work**, no special requirements |
 | Python | **3.12 only** (your worker venv must be 3.12 — the bundled wheel is cp312) |
 | PyTorch | **2.8.x + CUDA 12.8** (your worker venv must match — wheel is built against torch 2.8.0+cu128) |
-| ComfyUI | Desktop (or portable) with **[ComfyUI-Trellis2](https://github.com/visualbruno/ComfyUI-Trellis2) already installed and launched once** |
+| ComfyUI | Desktop (or portable) with **[ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2) already installed and launched once** |
 
 ### Will the wheel work for me?
 
-The bundled `wheels/natten-0.21.0+winsm89ptx-...-win_amd64.whl` is locked to **Windows + Python 3.12 + PyTorch 2.8 + CUDA 12.8 + NVIDIA GPU**. If your setup matches all of the above (which the standard ComfyUI-Trellis2 pixi env does), the wheel just works.
+The bundled `wheels/natten-0.21.0+winsm89ptx-...-win_amd64.whl` is locked to **Windows + Python 3.12 + PyTorch 2.8 + CUDA 12.8 + NVIDIA GPU**. If your setup matches all of the above (which the standard ComfyUI-TRELLIS2 pixi env does), the wheel just works.
 
 If any one of those doesn't match (you're on Linux / Python 3.11 / PyTorch 2.7 / etc.), you need to **install natten yourself for your env first**, then run `install.py` — it will auto-detect your natten and skip the bundled wheel. Two options:
 
@@ -66,11 +66,11 @@ If any one of those doesn't match (you're on Linux / Python 3.11 / PyTorch 2.7 /
 
 ## Prerequisites — TRELLIS2 must be working first
 
-This plugin **does not** install its own CUDA stack. It rides on top of ComfyUI-Trellis2's pixi-managed worker environment (which already contains o_voxel, cumesh, flex_gemm, nvdiffrast, flash_attn, etc.).
+This plugin **does not** install its own CUDA stack. It rides on top of ComfyUI-TRELLIS2's pixi-managed worker environment (which already contains o_voxel, cumesh, flex_gemm, nvdiffrast, flash_attn, etc.).
 
 **Before installing this plugin:**
 
-1. Install **[ComfyUI-Trellis2](https://github.com/visualbruno/ComfyUI-Trellis2)** via ComfyUI Manager (or git clone into `custom_nodes/`).
+1. Install **[ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2)** via ComfyUI Manager (or git clone into `custom_nodes/`).
 2. **Launch ComfyUI Desktop once** — TRELLIS2's first launch bootstraps its pixi env at `C:\ce\_env_<hash>\.pixi\envs\default\`. You'll see "Starting server" in the log when it's ready.
 3. **Verify TRELLIS2 works** — load one of its example workflows and queue it. If TRELLIS2 itself errors, fix that first; Pixal3D won't help you.
 
@@ -84,7 +84,7 @@ If you skip these, the Pixal3D installer can't find the worker Python and will e
 # 1. Open the custom_nodes folder
 cd $HOME\Documents\ComfyUI\custom_nodes
 
-# 2. Clone this repo *next to* ComfyUI-Trellis2 (NOT inside it)
+# 2. Clone this repo *next to* ComfyUI-TRELLIS2 (NOT inside it)
 git clone https://github.com/dreamrec/ComfyUI-Pixal3D.git
 
 # 3. Run the installer
@@ -136,7 +136,7 @@ GLBs are auto-saved to `ComfyUI/output/pixal3d_<timestamp>_<seed>.glb` with PNG-
 
 | Error | Fix |
 |---|---|
-| `Could not find ComfyUI-Trellis2` during install | ComfyUI-Trellis2 isn't installed next to this repo, or it hasn't been launched once to bootstrap its pixi env. Install/launch TRELLIS2 first. |
+| `Could not find ComfyUI-TRELLIS2` during install | ComfyUI-TRELLIS2 isn't installed next to this repo, or it hasn't been launched once to bootstrap its pixi env. Install/launch TRELLIS2 first. |
 | `Inference tensors do not track version counter` mid-run | You're on an older version of this plugin. `git pull` and re-run `python install.py`. (Fixed by wrapping `run_pixal3d` in `torch.inference_mode(False)`.) |
 | Thin black lines on the textured mesh | Set the `background_color` widget on the node to `gray` (the default). If you're on an old saved workflow it may still have `black` — re-create the node from the menu. |
 | `No module named 'pyrender'` or PyOpenGL ctypes error | Worker venv missing render deps. Re-run `python install.py`. |
@@ -165,7 +165,7 @@ Bullets on a few non-obvious VRAM facts we've measured:
 
 ### Upstream roadmap (TRELLIS2 `pixal3d` branch — not yet merged to main)
 
-[`visualbruno/ComfyUI-Trellis2#pixal3d`](https://github.com/visualbruno/ComfyUI-Trellis2/tree/pixal3d) is actively iterating on a fix for the 1536 OOM:
+A separate experimental fork at [`visualbruno/ComfyUI-Trellis2#pixal3d`](https://github.com/visualbruno/ComfyUI-Trellis2/tree/pixal3d) is iterating on a fix for the 1536 OOM (not yet upstreamed to `pozzettiandrea/ComfyUI-TRELLIS2`):
 
 - **`use_tiled_decoder` widget** — tiles the high-res DinoV3 inference so peak VRAM drops below the 34 GB ceiling. This unlocks `1536_cascade` on 24 GB cards.
 - **`pipeline_type` expanded** to `["512", "1024", "1024_cascade", "1536_cascade"]` — adds lighter modes for 12-16 GB cards.
@@ -183,7 +183,7 @@ Wrapper code (this repo): **MIT**, dreamrec 2026.
 The actual research / model work belongs to:
 
 - **[Pixal3D](https://github.com/TencentARC/Pixal3D)** — Tencent ARC + Tsinghua, SIGGRAPH 2026. **Tencent license — academic only, no EU use.**
-- **[TRELLIS.2](https://github.com/microsoft/TRELLIS.2)** + **[ComfyUI-Trellis2](https://github.com/visualbruno/ComfyUI-Trellis2)** — Microsoft Research + visualbruno (MIT).
+- **[TRELLIS.2](https://github.com/microsoft/TRELLIS.2)** + **[ComfyUI-TRELLIS2](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2)** — Microsoft Research + pozzettiandrea (MIT).
 - **[NATTEN](https://github.com/SHI-Labs/NATTEN)** — SHI-Labs (MIT).
 - **[NAF](https://github.com/valeoai/NAF)** — valeoai (Apache 2.0).
 - **[MoGe](https://github.com/microsoft/MoGe)** — Microsoft Research (MIT).

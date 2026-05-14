@@ -28,7 +28,7 @@ node run.
 |---|---|---|
 | [TencentARC/Pixal3D](https://github.com/TencentARC/Pixal3D) | image-to-3D pipeline + weights | Tencent custom (see above) |
 | [SHI-Labs/NATTEN](https://github.com/SHI-Labs/NATTEN) | neighborhood-attention CUDA kernels (we bundle a locally compiled wheel) | MIT |
-| [microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2) | upstream backbone (via the [`ComfyUI-Trellis2`](https://github.com/visualbruno/ComfyUI-Trellis2) wrapper) | MIT |
+| [microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2) | upstream backbone (via the [`ComfyUI-TRELLIS2`](https://github.com/pozzettiandrea/ComfyUI-TRELLIS2) wrapper) | MIT |
 | [valeoai/NAF](https://github.com/valeoai/NAF) | per-pixel feature upsampler used inside Pixal3D | Apache 2.0 |
 | [microsoft/MoGe](https://github.com/microsoft/MoGe) | camera-intrinsics estimator | MIT |
 | [ZhengPeng7/BiRefNet](https://github.com/ZhengPeng7/BiRefNet) | background-removal model (rerouted from gated briaai/RMBG-2.0) | MIT |
