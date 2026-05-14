@@ -118,6 +118,8 @@ Load either via **Workflow → Browse**. Drop your image into the LoadImage node
 
 GLBs are auto-saved to `ComfyUI/output/pixal3d_<timestamp>_<seed>.glb` with PNG-textures (open in Blender / Three.js / any standard viewer).
 
+**Want an OBJ too?** Set the `save_obj` widget to `True` (the bundled demos already do this in v0.1.10+) and you'll get `pixal3d_<timestamp>_<seed>.obj` + `.mtl` + base-color PNG written alongside the GLB. OBJ is base-color-only (the format has no standard metallic/roughness slots) — use it for DCC tools that prefer it; keep the GLB as the canonical PBR artifact.
+
 **Full parameter reference** for all three nodes lives in [docs/NODES.md](docs/NODES.md).
 
 ---
@@ -144,24 +146,33 @@ GLBs are auto-saved to `ComfyUI/output/pixal3d_<timestamp>_<seed>.glb` with PNG-
 
 | Setting | VRAM peak (standalone) | Time | Quality |
 |---|---|---|---|
-| `1024_cascade` + steps 16/16/16 + **32k tokens** + 300k decim + 4096 tex + **low_vram=true** (bundled workflow defaults, v0.1.9+) | ~17 GB | ~3-5 min warm | High-fidelity safe — works on 16-24 GB cards |
-| Same as above + **low_vram=false** (32 GB+ cards) | ~28-30 GB | ~2-3 min warm | Fastest, RTX 5090-class only |
-| `1024_cascade` + steps 12/12/12 + 32k tokens + 200k decim + 2048 tex + low_vram=true | ~14 GB | ~3 min warm | Recommended balance |
+| **`1536_cascade`** + steps 16/16/16 + **49k tokens** + 300k decim + 4096 tex + **low_vram=true** (bundled workflow defaults, v0.1.10+) | ~32 GB | ~65-70 s warm | **Best quality** — verified on RTX 5090 |
+| `1024_cascade` + steps 16/16/16 + 32k tokens + 300k decim + 4096 tex + low_vram=true | ~17 GB | ~3-5 min warm | High-fidelity safe — works on 16-24 GB cards |
+| Same `1024_cascade` row + **low_vram=false** (32 GB+ cards) | ~28-30 GB | ~50-65 s warm | Fastest 1024 run, RTX 5090-class only |
+| `1024_cascade` + steps 12/12/12 + 32k tokens + 200k decim + 2048 tex + low_vram=true | ~14 GB | ~3 min warm | Balanced for 16 GB cards |
 | `1024_cascade` + steps 8/8/8 + 16k tokens + low_vram=true | ~10 GB | ~1.5-2 min warm | Preview / tight cards |
-| `1536_cascade` + steps 16/16/16 + 4096 tex | ~46 GB | crashes on ≤34 GB cards | **Currently OOMs** (see below) |
 
-Bullets on a few non-obvious VRAM facts we've measured:
+### The 1536_cascade unlock (v0.1.10+)
+
+`1536_cascade` was previously documented as "OOMs on ≤34 GB cards" because peak VRAM with `low_vram=false` overshoots the 5090's 34 GB ceiling. **That's only true in eager-placement mode.** With `low_vram=true` flipped on, upstream Pixal3D moves the 4× DinoV3 `image_cond_model` extractors to CPU between stages — which frees enough headroom for the shape-1536 NAF attention. Verified on RTX 5090:
+
+- 3 back-to-back successful runs in `1536_cascade + low_vram=true + 49k tokens + 4096 tex`, each completing in **64-71 seconds warm**.
+- Peak allocated ~32 GB, peak reserved ~34 GB — fits with very little headroom but does not crash.
+
+If you have a 24 GB card and want to try 1536, drop `max_num_tokens` to **32768** first; if it OOMs, fall back to `1024_cascade`.
+
+### Other non-obvious VRAM facts
 
 - **`keep_warm` widget (v0.1.4+):** the Pixal3D pipeline is ~14 GB resident once loaded; `keep_warm=True` (default) leaves it in VRAM so the next call is ~3 min, `keep_warm=False` auto-frees it at the end of the run (next call pays the ~7-10 min cold-load again).
 - **Cold-load tax:** the first run after a ComfyUI restart spends 1-3 min loading Pixal3D weights into RAM and another 30-60 s transferring to GPU. Subsequent runs hit the cached singleton.
-- **The standalone-mode `comfy-aimdo` tax:** in-process mode loads `mmgp` and pre-allocates a 16 GB cast buffer for fp/bf casts. This is why `16/16/16 + 65k tokens + low_vram=false` (the old v0.1.3 defaults that ran ~14 GB peak in the worker env) now OOMs at ~30 GB on a 5090. v0.1.9 demos default to `32k tokens + low_vram=true` so the same workflow fits on 16-24 GB cards. Flip `low_vram=false` for 32 GB+ to get full speed back.
-- **The "1536 OOM" ceiling:** `1536_cascade` registers ~30 GB of model weights, plus the 16 GB cast buffer — total ~46 GB. Overshoots the 5090's 34 GB and silently crashes mid-`pipeline.to(device)`. The bundled workflows stay on `1024_cascade` until upstream lands a tiled-decoder fix (see below).
+- **The standalone-mode `comfy-aimdo` tax:** in-process mode loads `mmgp` and pre-allocates a 16 GB cast buffer for fp/bf casts. This is why `16/16/16 + 65k tokens + low_vram=false` (the old v0.1.3 defaults that ran ~14 GB peak in the worker env) now OOMs at ~30 GB on a 5090. v0.1.9+ demos default to `low_vram=true` which makes both `1024_cascade` and (in v0.1.10+) `1536_cascade` fit comfortably.
+- **VRAM fragmentation after many warm runs:** we've measured `1024_cascade + low_vram=false + 49k tokens` succeeding 10 times in a row then OOMing on the 11th. The allocator gradually loses contiguous space; the next OOM-free run is whatever the allocator can defragment. If you hit this, queue `Pixal3D: Free Pipeline` between batches or restart ComfyUI.
 
 ### Upstream roadmap
 
-An experimental fork at [`visualbruno/ComfyUI-Trellis2#pixal3d`](https://github.com/visualbruno/ComfyUI-Trellis2/tree/pixal3d) is iterating on a fix for the 1536 OOM (not yet upstreamed to `pozzettiandrea/ComfyUI-TRELLIS2`):
+An experimental fork at [`visualbruno/ComfyUI-Trellis2#pixal3d`](https://github.com/visualbruno/ComfyUI-Trellis2/tree/pixal3d) is iterating on further VRAM-fit improvements (not yet upstreamed to `pozzettiandrea/ComfyUI-TRELLIS2`):
 
-- **`use_tiled_decoder` widget** — tiles the high-res DinoV3 inference so peak VRAM drops below the 34 GB ceiling. This unlocks `1536_cascade` on 24 GB cards.
+- **`use_tiled_decoder` widget** — tiles the high-res DinoV3 inference so peak VRAM drops further. With v0.1.10+ we already fit `1536_cascade` on 34 GB cards via `low_vram=true`; tiled decoder would unlock it on 24 GB cards too.
 - **`pipeline_type` expanded** to `["512", "1024", "1024_cascade", "1536_cascade"]` — adds lighter modes for 12-16 GB cards.
 - **Per-stage memory load/unload** — interleaved offload between sampler stages, slimming peak VRAM further.
 - **Standard `natten-0.21.6` wheel** bundled — our custom 60 MB `natten-0.21.0+winsm89ptx` becomes redundant.

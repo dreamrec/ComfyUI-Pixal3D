@@ -499,6 +499,7 @@ def run_pixal3d(
     remesh: bool = True,
     save_to_output_dir: bool = True,
     output_filename_prefix: str = "pixal3d",
+    save_obj: bool = False,
 ) -> Tuple[Any, torch.Tensor, dict, str]:
     """Full Pixal3D image-to-mesh pipeline.
 
@@ -536,6 +537,7 @@ def run_pixal3d(
             remesh=remesh,
             save_to_output_dir=save_to_output_dir,
             output_filename_prefix=output_filename_prefix,
+            save_obj=save_obj,
         )
 
 
@@ -549,7 +551,8 @@ def _run_pixal3d_body(*, image, mask, low_vram, seed, pipeline_type,
                       tex_guidance_strength, tex_guidance_rescale,
                       tex_sampling_steps, tex_rescale_t,
                       decimation_target, texture_size, remesh,
-                      save_to_output_dir, output_filename_prefix):
+                      save_to_output_dir, output_filename_prefix,
+                      save_obj=False):
     import o_voxel
 
     if pipeline_type not in PIPELINE_TYPES:
@@ -693,6 +696,20 @@ def _run_pixal3d_body(*, image, mask, low_vram, seed, pipeline_type,
             glb.export(str(glb_path))
             glb_path_str = str(glb_path)
             log.info(f"[Pixal3D] GLB written: {glb_path}")
+
+            # Optional OBJ side-export — same basename, .obj extension. trimesh
+            # writes the .obj + .mtl + a base-color PNG next to it. OBJ format
+            # has no standard PBR slots (no metallic/roughness), so metalness +
+            # roughness maps from the GLB are dropped; the OBJ carries base
+            # color + UVs + normals only. Keep the GLB as the canonical PBR
+            # artifact and use the OBJ for DCC tools that prefer it.
+            if save_obj:
+                obj_path = glb_path.with_suffix(".obj")
+                try:
+                    glb.export(str(obj_path))
+                    log.info(f"[Pixal3D] OBJ written: {obj_path}")
+                except Exception as obj_err:
+                    log.warning(f"[Pixal3D] OBJ side-export failed: {obj_err}")
         except Exception as e:
             log.warning(f"[Pixal3D] GLB auto-save failed: {e}")
     else:

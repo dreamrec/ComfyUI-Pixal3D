@@ -97,6 +97,7 @@ class Pixal3DImageToMesh:
                 "keep_warm": ("BOOLEAN", {"default": True, "tooltip": "True: keep the loaded Pixal3D pipeline in VRAM after this run (~14 GB) so the NEXT call is fast (~3 min instead of ~7-10 min cold-load). False: auto-free the pipeline at the end of THIS call. Use False if you're done with Pixal3D for a while and need that VRAM back for other nodes."}),
                 "save_to_output_dir": ("BOOLEAN", {"default": True, "tooltip": "When True, auto-save the GLB to ComfyUI/output/<prefix>_<unix_ns>_<seed>.glb. Disable for chained workflows that export downstream via another node — leaves the mesh in memory only."}),
                 "output_filename_prefix": ("STRING", {"default": "pixal3d", "tooltip": "Prefix for the auto-saved GLB filename. Final name: <prefix>_<unix_ns>_<seed>.glb. Ignored if save_to_output_dir=False."}),
+                "save_obj": ("BOOLEAN", {"default": False, "tooltip": "Also export an OBJ (+ .mtl + texture PNGs) alongside the GLB. OBJ is base-color-only (the format has no standard metallic/roughness slots) — keep the GLB as the canonical PBR artifact and use the OBJ for DCC tools that prefer it (Blender, ZBrush, Marmoset). Ignored if save_to_output_dir=False."}),
             },
         }
 
@@ -144,6 +145,7 @@ string if save_to_output_dir=False."""
         keep_warm=True,
         save_to_output_dir=True,
         output_filename_prefix="pixal3d",
+        save_obj=False,
     ):
         from .pixal3d_stages import run_pixal3d, free_pipeline
 
@@ -178,6 +180,7 @@ string if save_to_output_dir=False."""
             remesh=remesh,
             save_to_output_dir=save_to_output_dir,
             output_filename_prefix=output_filename_prefix,
+            save_obj=save_obj,
         )
 
         # `keep_warm=False` is for users sharing the GPU with other

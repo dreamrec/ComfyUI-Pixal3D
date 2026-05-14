@@ -22,7 +22,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "## Quality + VRAM settings\n\nDefaults below are tuned for **standalone-mode safety** (Pixal3D running in ComfyUI Desktop's .venv with comfy-aimdo's 16 GB cast buffer reserved):\n- 1024_cascade + 16/16/16 sampling steps + **32k tokens** + 300k decimation + 4096 texture\n- **low_vram=True** (per-stage CPU offload; works on 16-24 GB cards)\n- Wall time: ~3-5 min warm, ~7-10 min cold-load.\n\n**To go faster on 32 GB+ cards (RTX 5090, A6000 etc.):** flip **low_vram** to **False**. Cuts wall time roughly in half.\n\n**If you OOM on a 12-16 GB card**, edit the **Pixal3DImageToMesh** widgets in this order until it fits:\n\n1. **max_num_tokens**: 32768 -> **24576** (smaller HR activation budget)\n2. **ss / shape / tex sampling_steps**: 16 -> **8** each\n3. **decimation_target**: 300000 -> **100000** (lighter mesh post-proc)\n4. **texture_size**: 4096 -> **1024**\n\nCards with 24 GB+ should **stay on 1024_cascade**. The 1536_cascade pipeline overshoots VRAM once ComfyUI Desktop reserves its 16 GB cast buffer - see the README \"Memory + performance\" table."
+        "## Quality + VRAM settings (1536_cascade unlocked)\n\nDefaults below are **verified working on RTX 5090 (34 GB)** and target maximum-quality output:\n- **pipeline_type: 1536_cascade** + 16/16/16 sampling steps + **49k tokens** + 300k decimation + 4096 texture\n- **low_vram=True** (per-stage CPU offload; this is what makes 1536 fit on 34 GB and below)\n- **save_obj=True** writes both .glb and .obj (+ .mtl + PNG) alongside each run\n- Wall time: ~65-70 s warm per scan on a 5090.\n\n**Why low_vram=True is required for 1536_cascade:** the shape-1536 NAF attention activation pattern peaks near the cudaMallocAsync ceiling even with v0.1.8+ device-placement fixes. With low_vram=True the image_cond_model offloads to CPU between stages, freeing enough VRAM for the high-res NAF step. The wall-time tax is small (~10-15s) because the offload only fires twice per run.\n\n**To go faster on 32 GB+ cards:** drop to **pipeline_type=1024_cascade** + low_vram=False (cuts wall time roughly in half; mesh detail drops modestly).\n\n**If you OOM on a 12-16 GB card:**\n1. **max_num_tokens**: 49152 -> **24576** (smaller HR activation budget)\n2. **ss / shape / tex sampling_steps**: 16 -> **8** each\n3. **decimation_target**: 300000 -> **100000** (lighter mesh post-proc)\n4. **texture_size**: 4096 -> **1024**\n\nThe 1536_cascade ceiling is the comfy-aimdo cast buffer (16 GB reserved) plus Pixal3D weights (~30 GB) \u2014 without low_vram=True the peak overshoots even a 5090. See README \"Memory + performance\" for full breakdown."
       ],
       "title": "Low-VRAM tweaks (read first)",
       "color": "#432",
@@ -134,11 +134,11 @@
         "Node name for S&R": "Pixal3DImageToMesh"
       },
       "widgets_values": [
-        "1024_cascade",
+        "1536_cascade",
         42,
         "fixed",
         true,
-        32768,
+        49152,
         1.0,
         512,
         0.0,
@@ -161,7 +161,8 @@
         "gray",
         true,
         true,
-        "pixal3d"
+        "pixal3d",
+        true
       ]
     },
     {
