@@ -160,8 +160,38 @@ def load_pipeline(low_vram: bool = False, model_path: str = PIXAL3D_MODEL_PATH):
     """
     global _pipeline
     if _pipeline is not None:
-        # Toggle low_vram dynamically if user changed it.
+        # Re-sync the cached pipeline's device + low_vram mode. Three classes
+        # of submodels need attention on a cache hit:
+        #
+        # 1. self.models (SS/shape/tex flow + decoders) — upstream's
+        #    Pixal3DImageTo3DPipeline.to() moves these when low_vram=False
+        #    (super().to() iterates self.models.values()).
+        # 2. self.rembg_model — upstream's .to() also moves this when
+        #    low_vram=False; in low_vram=True mode preprocess_image does it
+        #    lazily.
+        # 3. self.image_cond_model_* (the 4x DinoV3 projection extractors) —
+        #    upstream's .to() does NOT touch these; get_proj_cond_ss/shape/tex
+        #    do `if low_vram: image_cond_model.to(device); ...; .cpu()` after
+        #    use. A prior low_vram=True run thus leaves them parked on CPU.
+        #    With a follow-up low_vram=False run, the lazy move block is
+        #    skipped and forward() raises "Input type (cuda.FloatTensor) and
+        #    weight type (torch.FloatTensor) should be the same".
+        #
+        # Set low_vram first so upstream's .to() picks the right branch, then
+        # eagerly move the image_cond_models when going non-low-vram.
         _pipeline.low_vram = low_vram
+        device = mm.get_torch_device()
+        _pipeline.to(device)
+        if not low_vram:
+            for attr in (
+                "image_cond_model_ss",
+                "image_cond_model_shape_512",
+                "image_cond_model_shape_1024",
+                "image_cond_model_tex_1024",
+            ):
+                m = getattr(_pipeline, attr, None)
+                if m is not None:
+                    m.to(device)
         return _pipeline
 
     # Belt-and-suspenders override: HF_ENDPOINT may be inherited from
