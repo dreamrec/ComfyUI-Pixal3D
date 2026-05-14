@@ -20,7 +20,13 @@ ComfyUI custom node for **[Pixal3D](https://github.com/TencentARC/Pixal3D)** —
 **One image → textured PBR mesh in ~3-5 min on an RTX 5090.**
 
 <p align="center">
-  <img src="docs/images/demo_4view.png" alt="Pixal3D output mesh — 4 views" width="640">
+  <img src="docs/images/demo_4view.png" alt="Pixal3D output mesh — 4 textured views" width="640">
+  <br><sub><em>Four base-color views of the generated PBR mesh.</em></sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/demo_mesh_frontal.png" alt="Pixal3D output mesh — bare clay-shaded frontal view" width="480">
+  <br><sub><em>Same mesh, untextured clay shading — to read the geometry quality.</em></sub>
 </p>
 
 ---
@@ -38,7 +44,7 @@ Pixal3D is licensed by Tencent for **academic / non-commercial use only**, and *
 | | Requirement |
 |---|---|
 | OS | Windows 10 / 11 (x64) — bundled natten wheel is Windows-only |
-| GPU | NVIDIA RTX 30 / 40 / 50 with ≥ **16 GB VRAM** (24 GB+ recommended for `1024_cascade` defaults) |
+| GPU | NVIDIA RTX 30 / 40 / 50 with ≥ **16 GB VRAM** (24 GB+ recommended; the bundled workflows ship with `1024_cascade` + 16/16/16 steps, see the Note node in each for low-VRAM tweaks) |
 | Disk | ~50 GB free (24 GB Pixal3D + 4 GB other models + workspace) |
 | CPU | Any modern x86_64 — **Intel and AMD both work**, no special requirements |
 | Python | **3.12 only** (your worker venv must be 3.12 — the bundled wheel is cp312) |

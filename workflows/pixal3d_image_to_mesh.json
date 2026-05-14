@@ -1,7 +1,33 @@
 {
-  "last_node_id": 6,
-  "last_link_id": 6,
+  "last_node_id": 9,
+  "last_link_id": 8,
   "nodes": [
+    {
+      "id": 9,
+      "type": "Note",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        760,
+        140
+      ],
+      "flags": {},
+      "order": -1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "## Quality settings + low-VRAM tweaks\n\nDefaults below target a **higher-fidelity safe** combo verified on an RTX 5090: 1024_cascade + 16/16/16 sampling steps + 65k tokens + 300k decimation + 4096 texture. Wall time: ~3-4 min once the pipeline is warm; ~7-10 min on the first run after a ComfyUI restart (cold-load).\n\nIf you OOM on a 12-16 GB card, edit the **Pixal3DImageToMesh** widgets in this order until it fits:\n\n1. **max_num_tokens**: 65536 -> **24576** (smaller HR activation budget)\n2. **ss / shape / tex sampling_steps**: 16 -> **8** each\n3. **decimation_target**: 300000 -> **100000** (lighter mesh post-proc)\n4. **texture_size**: 4096 -> **1024**\n5. **low_vram**: false -> **true** (CPU offload between stages; ~2x wall time)\n\nCards with 24 GB+ should **stay on 1024_cascade**. The 1536_cascade pipeline overshoots VRAM once ComfyUI Desktop reserves its 16 GB cast buffer - see the README \"Memory + performance\" table."
+      ],
+      "title": "Low-VRAM tweaks (read first)",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
     {
       "id": 1,
       "type": "LoadImage",
@@ -11,7 +37,7 @@
       ],
       "size": [
         320,
-        314
+        370
       ],
       "flags": {},
       "order": 0,
@@ -37,7 +63,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "pixal3d_test_0.png",
+        "test_image.png",
         "image"
       ]
     },
@@ -50,7 +76,7 @@
       ],
       "size": [
         380,
-        700
+        950
       ],
       "flags": {},
       "order": 1,
@@ -80,7 +106,7 @@
           "type": "TRIMESH",
           "slot_index": 0,
           "links": [
-            2
+            7
           ]
         },
         {
@@ -95,17 +121,13 @@
           "name": "camera_angle_x",
           "type": "FLOAT",
           "slot_index": 2,
-          "links": [
-            4
-          ]
+          "links": null
         },
         {
           "name": "distance",
           "type": "FLOAT",
           "slot_index": 3,
-          "links": [
-            5
-          ]
+          "links": null
         }
       ],
       "properties": {
@@ -116,67 +138,27 @@
         42,
         "fixed",
         false,
-        49152,
+        65536,
         1.0,
         512,
         0.0,
         0.0,
         7.5,
-        12,
+        16,
         0.7,
         5.0,
         7.5,
-        12,
+        16,
         0.5,
         3.0,
         1.0,
-        12,
+        16,
         0.0,
         3.0,
-        200000,
-        2048,
+        300000,
+        4096,
         true,
         "gray"
-      ]
-    },
-    {
-      "id": 3,
-      "type": "Trellis2RenderPreview",
-      "pos": [
-        860,
-        200
-      ],
-      "size": [
-        300,
-        150
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "trimesh",
-          "type": "TRIMESH",
-          "link": 2
-        }
-      ],
-      "outputs": [
-        {
-          "name": "preview_images",
-          "type": "IMAGE",
-          "slot_index": 0,
-          "links": [
-            6
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "Trellis2RenderPreview"
-      },
-      "widgets_values": [
-        8,
-        512,
-        "normal"
       ]
     },
     {
@@ -184,11 +166,11 @@
       "type": "PreviewImage",
       "pos": [
         860,
-        400
+        200
       ],
       "size": [
-        300,
-        280
+        320,
+        320
       ],
       "flags": {},
       "order": 3,
@@ -208,65 +190,77 @@
       "title": "Preprocessed input"
     },
     {
-      "id": 5,
-      "type": "PreviewImage",
+      "id": 7,
+      "type": "Trellis2ExportTrimesh",
       "pos": [
-        1200,
-        200
+        860,
+        560
       ],
       "size": [
         320,
-        360
+        120
       ],
       "flags": {},
-      "order": 4,
+      "order": 99,
       "mode": 0,
       "inputs": [
         {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 6
+          "name": "trimesh",
+          "type": "TRIMESH",
+          "link": 7
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": [
+            8
+          ]
+        }
+      ],
       "properties": {
-        "Node name for S&R": "PreviewImage"
+        "Node name for S&R": "Trellis2ExportTrimesh"
       },
-      "widgets_values": [],
-      "title": "Mesh preview (8 views)"
+      "widgets_values": [
+        "pixal3d_preview",
+        "glb"
+      ],
+      "title": "Save GLB"
     },
     {
-      "id": 6,
-      "type": "ShowText|pysssss",
+      "id": 8,
+      "type": "Preview3D",
       "pos": [
         860,
         720
       ],
       "size": [
-        300,
-        80
+        400,
+        500
       ],
       "flags": {},
-      "order": 5,
-      "mode": 4,
+      "order": 100,
+      "mode": 0,
       "inputs": [
         {
-          "name": "text",
+          "name": "model_file",
           "type": "STRING",
-          "link": null,
+          "link": 8,
           "widget": {
-            "name": "text"
+            "name": "model_file"
           }
         }
       ],
       "outputs": [],
       "properties": {
-        "Node name for S&R": "ShowText|pysssss"
+        "Node name for S&R": "Preview3D"
       },
       "widgets_values": [
         ""
       ],
-      "title": "(GLB always saved to output/pixal3d_<ts>_<seed>.glb)"
+      "title": "3D preview (drag to rotate)"
     }
   ],
   "links": [
@@ -279,14 +273,6 @@
       "IMAGE"
     ],
     [
-      2,
-      2,
-      0,
-      3,
-      0,
-      "TRIMESH"
-    ],
-    [
       3,
       2,
       1,
@@ -295,34 +281,30 @@
       "IMAGE"
     ],
     [
-      6,
-      3,
+      7,
+      2,
       0,
-      5,
+      7,
       0,
-      "IMAGE"
+      "TRIMESH"
+    ],
+    [
+      8,
+      7,
+      0,
+      8,
+      0,
+      "STRING"
     ]
   ],
-  "groups": [
-    {
-      "title": "Pixal3D image \u2192 PBR mesh",
-      "bounding": [
-        20,
-        150,
-        1180,
-        580
-      ],
-      "color": "#3f789e",
-      "font_size": 24
-    }
-  ],
+  "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.85,
+      "scale": 0.6,
       "offset": [
-        0,
-        0
+        80,
+        80
       ]
     },
     "groupNodes": {}

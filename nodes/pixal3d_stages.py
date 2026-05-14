@@ -120,11 +120,14 @@ def _rescue_inference_tensors(module) -> None:
     weights under the ambient ComfyUI `inference_mode()` (e.g. if upstream
     Pixal3D ever adds another `from_pretrained` call we haven't escaped).
 
-    Cost on the no-op path: one `is_inference()` check per parameter ≈ μs.
-    The earlier state_dict roundtrip was dropped — it caused a ~5 GB
-    temporary VRAM spike on 4× DINOv3 ViT-L and was redundant with the
-    per-param clone fallback.
+    Fast path: if our caller has already disabled inference_mode, every
+    tensor allocated inside that scope is a regular tensor and no rescue
+    is needed. Bail out before iterating — on 4× DinoV3 ViT-L + Pixal3D
+    that loop was burning ~20 min single-threaded on cold-load even when
+    every `is_inference()` check returned False.
     """
+    if not torch.is_inference_mode_enabled():
+        return
     with torch.inference_mode(mode=False), torch.no_grad():
         for _p in module.parameters():
             if _p.is_inference():
